@@ -180,7 +180,7 @@ export default function App() {
           <TeleopControlsOverlay
             controller={controller.teleopSession.teleop}
             currentCamera={currentCamera}
-            onSelectCamera={(mode) => controller.sceneManager.setCameraMode(mode)}
+            onSelectCamera={(mode) => controller.sceneManager.setCameraMode(mode, undefined, undefined, true)}
             connectionState={connectionState}
             host={controller.teleopSession.client.getMetrics().host}
             port={controller.teleopSession.client.getMetrics().port}

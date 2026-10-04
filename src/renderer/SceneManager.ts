@@ -108,7 +108,10 @@ export class SceneManager {
     this.camera.updateProjectionMatrix();
   }
 
-  public setCameraMode(mode: CameraMode, radius: number = 6.0, height: number = 3.2): void {
+  public setCameraMode(mode: CameraMode, radius: number = 6.0, height: number = 3.2, smooth: boolean = false): void {
+    if (this.cameraMode !== mode) {
+      this.isTransitioning = smooth;
+    }
     this.cameraMode = mode;
     this.cameraRadius = radius;
     this.cameraHeight = height;
@@ -132,6 +135,8 @@ export class SceneManager {
   private readonly _vDesiredPos: THREE.Vector3 = new THREE.Vector3();
   private readonly _vHeadPos: THREE.Vector3 = new THREE.Vector3();
   private readonly _vPelvisPos: THREE.Vector3 = new THREE.Vector3();
+  private readonly _vCurrentLookAt: THREE.Vector3 = new THREE.Vector3(0, 1.0, 0);
+  private isTransitioning: boolean = false;
 
   public getCameraMode(): CameraMode {
     return this.cameraMode;
@@ -145,27 +150,52 @@ export class SceneManager {
       const angle = timeSeconds * this.cameraOrbitSpeed;
       const x = Math.sin(angle) * this.cameraRadius;
       const z = Math.cos(angle) * this.cameraRadius;
-      this.camera.position.set(x, this.cameraHeight, z);
-      this.camera.lookAt(this.cameraTarget);
+      this._vDesiredPos.set(x, this.cameraHeight, z);
+      this._vTarget.copy(this.cameraTarget);
+
+      if (this.isTransitioning) {
+        this.camera.position.lerp(this._vDesiredPos, 0.12);
+        this._vCurrentLookAt.lerp(this._vTarget, 0.15);
+        this.camera.lookAt(this._vCurrentLookAt);
+        if (this.camera.position.distanceToSquared(this._vDesiredPos) < 0.01) {
+          this.isTransitioning = false;
+        }
+      } else {
+        this.camera.position.set(x, this.cameraHeight, z);
+        this.camera.lookAt(this.cameraTarget);
+      }
     } else if (this.cameraMode === 'third_person') {
       // 3rd-person chase camera tracking behind pelvis
       const pelvis = robotPelvisPos || this._vPelvisPos.set(0, 0.63, 0);
       this._vDesiredPos.set(pelvis.x, pelvis.y + 0.55, pelvis.z + 1.8);
-      this.camera.position.lerp(this._vDesiredPos, 0.1);
       this._vTarget.set(pelvis.x, pelvis.y + 0.3, pelvis.z);
-      this.camera.lookAt(this._vTarget);
+      this.camera.position.lerp(this._vDesiredPos, 0.10);
+      this._vCurrentLookAt.lerp(this._vTarget, 0.12);
+      this.camera.lookAt(this._vCurrentLookAt);
     } else if (this.cameraMode === 'front_inspection') {
       // Front eye-level inspection view
       this._vDesiredPos.set(0, 0.85, -2.2);
-      this.camera.position.lerp(this._vDesiredPos, 0.1);
       this._vTarget.set(0, 0.75, 0);
-      this.camera.lookAt(this._vTarget);
+      this.camera.position.lerp(this._vDesiredPos, 0.10);
+      this._vCurrentLookAt.lerp(this._vTarget, 0.12);
+      this.camera.lookAt(this._vCurrentLookAt);
     } else if (this.cameraMode === 'first_person') {
       // First person eye-level camera mounted on head
       const head = robotHeadPos || this._vHeadPos.set(0, 1.15, 0);
-      this.camera.position.set(head.x, head.y + 0.08, head.z - 0.05);
+      this._vDesiredPos.set(head.x, head.y + 0.08, head.z - 0.05);
       this._vTarget.set(head.x, head.y + 0.08, head.z - 10.0);
-      this.camera.lookAt(this._vTarget);
+
+      if (this.isTransitioning) {
+        this.camera.position.lerp(this._vDesiredPos, 0.20);
+        this._vCurrentLookAt.lerp(this._vTarget, 0.20);
+        this.camera.lookAt(this._vCurrentLookAt);
+        if (this.camera.position.distanceToSquared(this._vDesiredPos) < 0.01) {
+          this.isTransitioning = false;
+        }
+      } else {
+        this.camera.position.set(this._vDesiredPos.x, this._vDesiredPos.y, this._vDesiredPos.z);
+        this.camera.lookAt(this._vTarget);
+      }
     } else if (this.cameraMode === 'rapid_sweep') {
       // Rapid oscillation to test matrix update performance under sudden viewpoint changes
       const sweepAngle = Math.sin(timeSeconds * 4.0) * 1.2;
