@@ -179,6 +179,7 @@ export class StateTransportClient {
   private handleOpen(): void {
     this.setConnectionState('CONNECTED');
     this.expectedSequence = 0;
+    this.metrics.lastSequenceNumber = 0;
 
     // Send binary stream subscription request
     try {
