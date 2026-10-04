@@ -1,31 +1,41 @@
 /**
  * TeleopControlsOverlay.tsx
  * 
- * Game-Like Teleoperation HUD Overlay for Asimov 1.
+ * Production Game-Like Teleoperation Control Surface for Asimov 1.
  * Features:
- * - Dual virtual touch joysticks (Left: forward/lateral, Right: yaw)
- * - Action buttons: STAND, WALK, CROUCH, RECOVERY, RESET, E-STOP
- * - Camera mode selector: 3RD, 1ST, FRONT, ORBIT
- * - Backend connection status & manual connect toggle
+ * - OperatorStatusBar across top (Robot mode, policy, safety, velocity, cameras)
+ * - Dual ergonomic virtual joysticks (Left: Vx/Vy translation, Right: Wz yaw rotation)
+ * - Tactile action buttons (STAND, WALK, CROUCH, RECOVERY, DAMP, RESET)
+ * - Prominent high-contrast safety E-STOP button
+ * - Unobstructed central 3D viewport
+ * - Safety interlock banner during network degradation or connection drop
  */
 
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { VirtualJoystick } from './VirtualJoystick';
 import { TeleopController } from './TeleopController';
-import { CommandType } from '../protocol/AsimovStateProtocol';
+import { CommandType, RobotMode, PolicyId, RecoveryState } from '../protocol/AsimovStateProtocol';
 import { CameraMode } from '../renderer/SceneManager';
+import { OperatorStatusBar } from './OperatorStatusBar';
+import { GlobalConnectionState } from '../app/navigation/AppStateMachine';
+import { InterpolatedRobotPose } from '../synchronization/StateBuffer';
 
-interface TeleopControlsOverlayProps {
+export interface TeleopControlsOverlayProps {
   controller: TeleopController;
   currentCamera: CameraMode;
   onSelectCamera: (mode: CameraMode) => void;
-  connectionState: string;
+  connectionState: GlobalConnectionState;
   host: string;
   port: number;
-  onUpdateConnection: (host: string, port: number) => void;
+  latestPose?: InterpolatedRobotPose | null;
+  rttMs?: number;
+  packetRateHz?: number;
+  onUpdateConnection?: (host: string, port: number) => void;
   onConnect: () => void;
   onDisconnect: () => void;
+  onOpenSettings?: () => void;
+  onExitToHome?: () => void;
 }
 
 export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
@@ -33,209 +43,194 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
   currentCamera,
   onSelectCamera,
   connectionState,
-  host,
-  port,
-  onUpdateConnection,
+  latestPose,
+  rttMs = 0,
+  packetRateHz = 0,
   onConnect,
   onDisconnect,
+  onOpenSettings = () => {},
+  onExitToHome = () => {},
 }) => {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [inputHost, setInputHost] = useState(host);
-  const [inputPort, setInputPort] = useState(port.toString());
+  const [activeMode, setActiveMode] = useState<CommandType>(CommandType.STAND);
+  const [cmdVelocities, setCmdVelocities] = useState({ vx: 0, vy: 0, wz: 0 });
+
+  // Poll commanded velocities at ~10 Hz for smooth operator feedback
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCmdVelocities(controller.getTargetVelocities());
+    }, 100);
+    return () => clearInterval(timer);
+  }, [controller]);
+
+  const handleCommand = (cmd: CommandType) => {
+    setActiveMode(cmd);
+    controller.triggerAction(cmd);
+  };
 
   const isConnected = connectionState === 'CONNECTED';
-  const connColor = isConnected ? '#10b981' : connectionState === 'CONNECTING' ? '#f59e0b' : '#ef4444';
+  const isInterrupted =
+    connectionState === 'DISCONNECTED' ||
+    connectionState === 'RECONNECTING' ||
+    connectionState === 'FAILED';
 
-  const handleSaveSettings = () => {
-    const parsedPort = parseInt(inputPort, 10) || 8854;
-    onUpdateConnection(inputHost.trim(), parsedPort);
-    setSettingsOpen(false);
-  };
+  const robotMode = latestPose ? latestPose.robotMode : RobotMode.STAND;
+  const policyId = latestPose ? (latestPose as any).policyId ?? PolicyId.OFFICIAL_LOCOMOTION : PolicyId.OFFICIAL_LOCOMOTION;
+  const recoveryState = latestPose ? latestPose.recoveryState : RecoveryState.NORMAL;
+  const safetyFault = latestPose ? (latestPose.flags & 0x01) !== 0 : false;
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      {/* Top Bar: Connection & Camera Selectors */}
-      <View style={styles.topBar} pointerEvents="box-none">
-        {/* Connection status pill */}
-        <TouchableOpacity
-          style={styles.connPill}
-          activeOpacity={0.7}
-          onPress={() => setSettingsOpen(true)}
-        >
-          <View style={[styles.statusDot, { backgroundColor: connColor }]} />
-          <Text style={styles.connText}>
-            {isConnected ? `${host}:${port}` : `${connectionState}`}
-          </Text>
-          <Text style={styles.settingsIcon}>⚙</Text>
-        </TouchableOpacity>
+      {/* 1. TOP OPERATOR STATUS TELEMETRY BAR */}
+      <OperatorStatusBar
+        connectionState={connectionState}
+        robotMode={robotMode}
+        policyId={policyId}
+        recoveryState={recoveryState}
+        safetyFault={safetyFault}
+        commandVelocities={cmdVelocities}
+        packetRateHz={packetRateHz}
+        rttMs={rttMs}
+        currentCamera={currentCamera}
+        onSelectCamera={onSelectCamera}
+        onOpenSettings={onOpenSettings}
+        onExitToHome={onExitToHome}
+      />
 
-        {/* Camera Selector Pills */}
-        <View style={styles.cameraRow}>
-          {(['third_person', 'first_person', 'front_inspection', 'orbit'] as CameraMode[]).map(
-            (mode) => {
-              const active = currentCamera === mode;
-              const label =
-                mode === 'third_person'
-                  ? '3RD'
-                  : mode === 'first_person'
-                  ? 'FPV'
-                  : mode === 'front_inspection'
-                  ? 'FRONT'
-                  : 'ORBIT';
-
-              return (
-                <TouchableOpacity
-                  key={mode}
-                  style={[styles.camButton, active && styles.camButtonActive]}
-                  onPress={() => onSelectCamera(mode)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.camText, active && styles.camTextActive]}>{label}</Text>
-                </TouchableOpacity>
-              );
-            }
-          )}
+      {/* 2. CONNECTION INTERRUPTED SAFETY BANNER */}
+      {isInterrupted && (
+        <View style={styles.warningBannerContainer} pointerEvents="box-none">
+          <View style={styles.warningBanner}>
+            <View style={styles.warningDot} />
+            <Text style={styles.warningText}>
+              {connectionState === 'RECONNECTING'
+                ? 'CONNECTION LOST — RESTORING VAS1 STREAM...'
+                : 'ROBOT DISCONNECTED — COMMAND DISPATCH INHIBITED'}
+            </Text>
+            {connectionState === 'DISCONNECTED' && (
+              <TouchableOpacity style={styles.reconnectBtn} onPress={onConnect} activeOpacity={0.7}>
+                <Text style={styles.reconnectBtnText}>RECONNECT</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
-      {/* Action Buttons Toolbar (Right Center) */}
-      <View style={styles.actionBar}>
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnStand]}
-          onPress={() => controller.triggerAction(CommandType.STAND)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>STAND</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnWalk]}
-          onPress={() => controller.triggerAction(CommandType.WALK)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>WALK</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnCrouch]}
-          onPress={() => controller.triggerAction(CommandType.CROUCH)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>CROUCH</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnRecovery]}
-          onPress={() => controller.triggerAction(CommandType.RECOVERY)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>GET UP</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnReset]}
-          onPress={() => controller.triggerAction(CommandType.RESET)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnText}>RESET</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.btnEstop]}
-          onPress={() => controller.triggerAction(CommandType.ESTOP)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionBtnTextEstop}>E-STOP</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Bottom Joystick Layer */}
-      <View style={styles.joystickRow} pointerEvents="box-none">
-        {/* Left Joystick: Motion (vx, vy) */}
-        <View style={styles.joystickWrapper}>
-          <Text style={styles.joystickLabel}>TRANSLATION</Text>
+      {/* 3. BOTTOM TELEOPERATION CONTROL DECK */}
+      <View style={styles.bottomDeck} pointerEvents="box-none">
+        {/* Left Joystick: Translation (Vx forward/reverse, Vy lateral) */}
+        <View style={styles.joystickSlot}>
+          <Text style={styles.joystickLabel}>TRANSLATION (Vx / Vy)</Text>
           <VirtualJoystick
-            size={130}
-            knobSize={50}
+            size={136}
+            knobSize={52}
             accentColor="#38bdf8"
             onMove={(normX, normY) => controller.updateLeftJoystick(normX, normY)}
             onRelease={() => controller.releaseLeftJoystick()}
           />
         </View>
 
-        {/* Right Joystick: Yaw (wz) */}
-        <View style={styles.joystickWrapper}>
-          <Text style={styles.joystickLabel}>ROTATION</Text>
+        {/* Center Control Cluster: Mode Selectors + E-STOP */}
+        <View style={styles.centerCluster} pointerEvents="box-none">
+          {/* Primary Action Buttons Row */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.modeBtn, activeMode === CommandType.STAND && styles.modeBtnActive]}
+              onPress={() => handleCommand(CommandType.STAND)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.modeBtnText,
+                  activeMode === CommandType.STAND && styles.modeBtnTextActive,
+                ]}
+              >
+                STAND
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeBtn, activeMode === CommandType.WALK && styles.modeBtnActive]}
+              onPress={() => handleCommand(CommandType.WALK)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.modeBtnText,
+                  activeMode === CommandType.WALK && styles.modeBtnTextActive,
+                ]}
+              >
+                WALK
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeBtn, activeMode === CommandType.CROUCH && styles.modeBtnActive]}
+              onPress={() => handleCommand(CommandType.CROUCH)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.modeBtnText,
+                  activeMode === CommandType.CROUCH && styles.modeBtnTextActive,
+                ]}
+              >
+                CROUCH
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeBtn, styles.modeBtnRecovery]}
+              onPress={() => handleCommand(CommandType.RECOVERY)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextRecovery]}>RECOVER</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Auxiliary Row: Damp & Reset */}
+          <View style={styles.auxRow}>
+            <TouchableOpacity
+              style={styles.auxBtn}
+              onPress={() => handleCommand(CommandType.DAMP)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.auxBtnText}>DAMP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.auxBtn}
+              onPress={() => handleCommand(CommandType.RESET)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.auxBtnText}>RESET</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Prominent Safety E-STOP Button */}
+          <TouchableOpacity
+            style={styles.estopButton}
+            onPress={() => handleCommand(CommandType.ESTOP)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.estopInnerRing}>
+              <Text style={styles.estopText}>E - S T O P</Text>
+              <Text style={styles.estopSubtext}>EMERGENCY HALT</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Right Joystick: Rotation (Wz yaw rate) */}
+        <View style={styles.joystickSlot}>
+          <Text style={styles.joystickLabel}>ROTATION (Yaw Wz)</Text>
           <VirtualJoystick
-            size={130}
-            knobSize={50}
+            size={136}
+            knobSize={52}
             accentColor="#818cf8"
             onMove={(normX) => controller.updateRightJoystick(normX)}
             onRelease={() => controller.releaseRightJoystick()}
           />
         </View>
       </View>
-
-      {/* Connection Settings Modal */}
-      <Modal visible={settingsOpen} transparent animationType="fade">
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>VASIMOV BACKEND CONNECTION</Text>
-
-            <Text style={styles.inputLabel}>SERVER HOST / IP</Text>
-            <TextInput
-              style={styles.input}
-              value={inputHost}
-              onChangeText={setInputHost}
-              placeholder="10.222.5.132 or 127.0.0.1"
-              placeholderTextColor="#64748b"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Text style={styles.inputLabel}>WEBSOCKET PORT</Text>
-            <TextInput
-              style={styles.input}
-              value={inputPort}
-              onChangeText={setInputPort}
-              placeholder="8854"
-              placeholderTextColor="#64748b"
-              keyboardType="numeric"
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.btnCancel]}
-                onPress={() => setSettingsOpen(false)}
-              >
-                <Text style={styles.modalBtnText}>CANCEL</Text>
-              </TouchableOpacity>
-
-              {isConnected ? (
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.btnDisconnect]}
-                  onPress={() => {
-                    onDisconnect();
-                    setSettingsOpen(false);
-                  }}
-                >
-                  <Text style={styles.modalBtnText}>DISCONNECT</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.btnConnect]}
-                  onPress={() => {
-                    handleSaveSettings();
-                    onConnect();
-                  }}
-                >
-                  <Text style={styles.modalBtnText}>CONNECT</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -245,194 +240,171 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
   },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  warningBannerContainer: {
+    position: 'absolute',
+    top: 110,
+    left: 20,
+    right: 20,
     alignItems: 'center',
-    paddingTop: 42,
+    zIndex: 25,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    paddingVertical: 8,
     paddingHorizontal: 16,
-    zIndex: 10,
-  },
-  connPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 16,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: '#ef4444',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  statusDot: {
+  warningDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6,
+    backgroundColor: '#ef4444',
+    marginRight: 10,
   },
-  connText: {
-    color: '#e2e8f0',
-    fontSize: 11,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  settingsIcon: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginLeft: 6,
-  },
-  cameraRow: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderRadius: 16,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  camButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-  },
-  camButtonActive: {
-    backgroundColor: '#0284c7',
-  },
-  camText: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  camTextActive: {
-    color: '#ffffff',
-  },
-  actionBar: {
-    position: 'absolute',
-    right: 16,
-    top: 96,
-    zIndex: 20,
-    alignItems: 'flex-end',
-  },
-  actionBtn: {
-    width: 72,
-    paddingVertical: 7,
-    borderRadius: 8,
-    marginVertical: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  btnStand: {
-    backgroundColor: 'rgba(30, 41, 59, 0.88)',
-  },
-  btnWalk: {
-    backgroundColor: 'rgba(16, 185, 129, 0.85)',
-  },
-  btnCrouch: {
-    backgroundColor: 'rgba(30, 41, 59, 0.88)',
-  },
-  btnRecovery: {
-    backgroundColor: 'rgba(245, 158, 11, 0.85)',
-  },
-  btnReset: {
-    backgroundColor: 'rgba(71, 85, 105, 0.88)',
-  },
-  btnEstop: {
-    backgroundColor: 'rgba(220, 38, 38, 0.95)',
-    borderColor: '#f87171',
-    marginTop: 6,
-  },
-  actionBtnText: {
+  warningText: {
     color: '#f8fafc',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
+    fontFamily: 'monospace',
     letterSpacing: 0.5,
   },
-  actionBtnTextEstop: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+  reconnectBtn: {
+    backgroundColor: '#0284c7',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginLeft: 12,
   },
-  joystickRow: {
+  reconnectBtnText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+  },
+  bottomDeck: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingBottom: 28,
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    zIndex: 10,
   },
-  joystickWrapper: {
+  joystickSlot: {
     alignItems: 'center',
   },
   joystickLabel: {
-    color: '#94a3b8',
-    fontSize: 9,
+    color: '#64748b',
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.8,
-    marginBottom: 6,
+    letterSpacing: 1.0,
+    fontFamily: 'monospace',
+    marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
+  centerCluster: {
     alignItems: 'center',
-    padding: 24,
+    paddingBottom: 4,
   },
-  modalCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 18,
+  actionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  modeBtn: {
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalTitle: {
-    color: '#38bdf8',
-    fontSize: 13,
+  modeBtnActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#38bdf8',
+  },
+  modeBtnRecovery: {
+    backgroundColor: 'rgba(217, 119, 6, 0.25)',
+    borderColor: 'rgba(245, 158, 11, 0.5)',
+  },
+  modeBtnText: {
+    color: '#94a3b8',
+    fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.6,
-    marginBottom: 14,
-    textAlign: 'center',
+    fontFamily: 'monospace',
+    letterSpacing: 0.8,
   },
-  inputLabel: {
+  modeBtnTextActive: {
+    color: '#ffffff',
+  },
+  modeBtnTextRecovery: {
+    color: '#fbbf24',
+  },
+  auxRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  auxBtn: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  auxBtnText: {
     color: '#94a3b8',
     fontSize: 10,
     fontWeight: '700',
-    marginBottom: 4,
-    marginTop: 8,
+    fontFamily: 'monospace',
   },
-  input: {
-    backgroundColor: '#1e293b',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    color: '#f8fafc',
-    fontSize: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 18,
-  },
-  modalBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  btnCancel: {
-    backgroundColor: '#334155',
-  },
-  btnConnect: {
-    backgroundColor: '#0284c7',
-  },
-  btnDisconnect: {
+  estopButton: {
+    width: 220,
     backgroundColor: '#dc2626',
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 2,
+    borderColor: '#fca5a5',
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  modalBtnText: {
+  estopInnerRing: {
+    backgroundColor: '#b91c1c',
+    borderRadius: 9,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  estopText: {
     color: '#ffffff',
-    fontSize: 11,
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 2.5,
+    fontFamily: 'monospace',
+  },
+  estopSubtext: {
+    color: '#fecaca',
+    fontSize: 8,
     fontWeight: '700',
+    letterSpacing: 1.2,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
 });

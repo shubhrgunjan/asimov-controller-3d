@@ -167,48 +167,6 @@ export default function App() {
       {/* 3. SCREEN: LIVE TELEOPERATION */}
       {currentScreen === 'TELEOPERATION' && controller && (
         <>
-          {/* Top Operator Quick Bar */}
-          <View style={styles.teleopTopBar} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.homeReturnButton}
-              onPress={() => stateMachineRef.current.navigate('HOME')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.homeReturnText}>⌂ HOME</Text>
-            </TouchableOpacity>
-
-            <View style={styles.teleopStatusPill}>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      connectionState === 'CONNECTED'
-                        ? '#10b981'
-                        : connectionState === 'DEGRADED'
-                        ? '#f59e0b'
-                        : '#ef4444',
-                  },
-                ]}
-              />
-              <Text style={styles.teleopStatusText}>
-                {connectionState === 'CONNECTED'
-                  ? 'LIVE TELEOP'
-                  : connectionState === 'DEGRADED'
-                  ? 'DEGRADED'
-                  : 'DISCONNECTED'}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.topSettingsButton}
-              onPress={() => stateMachineRef.current.navigate('SETTINGS')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.topSettingsText}>⚙</Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Optional Developer Diagnostics HUD (toggled via settings) */}
           {appConfig.diagnostics.showDevHud && (
             <DiagnosticsHUD
@@ -218,7 +176,7 @@ export default function App() {
             />
           )}
 
-          {/* Full Interactive Teleoperation Controls Overlay */}
+          {/* Full Interactive Teleoperation Controls & Status Overlay */}
           <TeleopControlsOverlay
             controller={controller.teleopSession.teleop}
             currentCamera={currentCamera}
@@ -226,11 +184,13 @@ export default function App() {
             connectionState={connectionState}
             host={controller.teleopSession.client.getMetrics().host}
             port={controller.teleopSession.client.getMetrics().port}
-            onUpdateConnection={(host, port) =>
-              controller.teleopSession.updateServerAddress(host, port)
-            }
+            latestPose={controller.teleopSession.getLatestPose()}
+            rttMs={controller.teleopSession.client.getMetrics().rttMs}
+            packetRateHz={controller.teleopSession.client.getMetrics().packetRateHz}
             onConnect={() => controller.teleopSession.connect()}
             onDisconnect={handleDisconnect}
+            onOpenSettings={() => stateMachineRef.current.navigate('SETTINGS')}
+            onExitToHome={() => stateMachineRef.current.navigate('HOME')}
           />
         </>
       )}
@@ -279,66 +239,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#070a10',
-  },
-  teleopTopBar: {
-    position: 'absolute',
-    top: 36,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 30,
-  },
-  homeReturnButton: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  homeReturnText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    letterSpacing: 0.6,
-  },
-  teleopStatusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    marginRight: 6,
-  },
-  teleopStatusText: {
-    color: '#f8fafc',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    fontFamily: 'monospace',
-  },
-  topSettingsButton: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  topSettingsText: {
-    color: '#94a3b8',
-    fontSize: 13,
   },
   benchmarkExitContainer: {
     position: 'absolute',
