@@ -6,8 +6,10 @@ import {
   ASIMOV_TOTAL_TRIANGLES,
   ASIMOV_TOTAL_JOINTS,
   ASIMOV_HEAD_BODY,
+  CANONICAL_SIM_JOINTS,
 } from './AsimovJointHierarchy';
 import { ASIMOV_1_MOBILE_GLB_BASE64 } from './asimov_1_model_data';
+import { InterpolatedRobotPose } from '../synchronization/StateBuffer';
 
 export type ValidationPoseName =
   | 'neutral'
@@ -39,6 +41,8 @@ interface JointNodeRef {
   node: THREE.Object3D;
   basePosition: THREE.Vector3;
   baseQuaternion: THREE.Quaternion;
+  axisVector: THREE.Vector3;
+  scratchQuat: THREE.Quaternion;
   currentAngle: number;
 }
 
@@ -53,9 +57,15 @@ export class AsimovRobotModel {
   public readonly modelContainer: THREE.Group;
 
   private jointNodes: Map<string, JointNodeRef> = new Map();
+  private canonicalJointNodes: (JointNodeRef | null)[] = new Array(25).fill(null);
   private isLoaded: boolean = false;
   private headNode: THREE.Object3D | null = null;
   private pelvisNode: THREE.Object3D | null = null;
+
+  // Pre-allocated coordinate transformation quaternions
+  private readonly scratchBaseQuat: THREE.Quaternion = new THREE.Quaternion();
+  private readonly coordQuat: THREE.Quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2));
+  private readonly coordQuatInv: THREE.Quaternion = this.coordQuat.clone().invert();
 
   // Cached dimension metrics
   private dimensions: RobotDimensions = {
@@ -144,14 +154,22 @@ export class AsimovRobotModel {
     for (const [jName, jDef] of Object.entries(ASIMOV_JOINTS)) {
       const node = scene.getObjectByName(jDef.nodeName);
       if (node) {
-        this.jointNodes.set(jName, {
+        const ref: JointNodeRef = {
           def: jDef,
           node,
           basePosition: node.position.clone(),
           baseQuaternion: node.quaternion.clone(),
+          axisVector: new THREE.Vector3(jDef.axis[0], jDef.axis[1], jDef.axis[2]).normalize(),
+          scratchQuat: new THREE.Quaternion(),
           currentAngle: 0.0,
-        });
+        };
+        this.jointNodes.set(jName, ref);
       }
+    }
+
+    // Populate canonical array matching SIM_JOINTS (0..24)
+    for (let i = 0; i < CANONICAL_SIM_JOINTS.length; i++) {
+      this.canonicalJointNodes[i] = this.jointNodes.get(CANONICAL_SIM_JOINTS[i]) || null;
     }
 
     this.pelvisNode = scene.getObjectByName('pelvis_link') || null;
@@ -177,7 +195,7 @@ export class AsimovRobotModel {
   }
 
   /**
-   * Set single joint angle in radians around its physical axis
+   * Set single joint angle in radians around its physical axis (zero allocation)
    */
   public setJointAngle(jointName: string, radians: number): boolean {
     const jRef = this.jointNodes.get(jointName);
@@ -188,13 +206,63 @@ export class AsimovRobotModel {
     const clamped = Math.max(minLim, Math.min(maxLim, radians));
     jRef.currentAngle = clamped;
 
-    // Rotation quaternion: axis * angle
-    const axisVec = new THREE.Vector3(jRef.def.axis[0], jRef.def.axis[1], jRef.def.axis[2]);
-    const rotQuat = new THREE.Quaternion().setFromAxisAngle(axisVec, clamped);
-
-    // Apply rotation relative to base rest orientation
-    jRef.node.quaternion.copy(jRef.baseQuaternion).multiply(rotQuat);
+    // Zero-allocation rotation update: axis * angle
+    jRef.scratchQuat.setFromAxisAngle(jRef.axisVector, clamped);
+    jRef.node.quaternion.copy(jRef.baseQuaternion).multiply(jRef.scratchQuat);
     return true;
+  }
+
+  /**
+   * Fast batch update for all 25 joints from canonical SIM_JOINTS (0..24) array.
+   * Completely zero heap allocations in the 60 FPS render loop.
+   */
+  public applySimJointState(jointPositions: Float32Array | number[]): void {
+    const len = Math.min(25, jointPositions.length);
+    for (let i = 0; i < len; i++) {
+      const jRef = this.canonicalJointNodes[i];
+      if (!jRef) continue;
+
+      const [minLim, maxLim] = jRef.def.range;
+      const val = jointPositions[i];
+      const clamped = Math.max(minLim, Math.min(maxLim, val));
+      jRef.currentAngle = clamped;
+
+      jRef.scratchQuat.setFromAxisAngle(jRef.axisVector, clamped);
+      jRef.node.quaternion.copy(jRef.baseQuaternion).multiply(jRef.scratchQuat);
+    }
+  }
+
+  /**
+   * Apply authoritative 6-DoF base pose from MuJoCo simulation.
+   */
+  public applyBasePose(
+    positionMeters: [number, number, number],
+    orientationQuat?: [number, number, number, number]
+  ): void {
+    // Coordinate transform:
+    // MuJoCo X (Forward) -> Three.js -Z
+    // MuJoCo Y (Left)    -> Three.js -X
+    // MuJoCo Z (Up)      -> Three.js +Y
+    this.rootGroup.position.set(-positionMeters[1], positionMeters[2], -positionMeters[0]);
+
+    if (orientationQuat) {
+      this.scratchBaseQuat.set(
+        orientationQuat[0],
+        orientationQuat[1],
+        orientationQuat[2],
+        orientationQuat[3]
+      );
+      // Three.js quaternion: q_three = q_coord * q_mujoco * q_coord_inv
+      this.rootGroup.quaternion.copy(this.coordQuat).multiply(this.scratchBaseQuat).multiply(this.coordQuatInv);
+    }
+  }
+
+  /**
+   * Apply authoritative robot state snapshot from StateBuffer
+   */
+  public applyAuthoritativeState(pose: InterpolatedRobotPose): void {
+    this.applyBasePose(pose.basePosition, pose.baseOrientation);
+    this.applySimJointState(pose.jointPositions);
   }
 
   /**

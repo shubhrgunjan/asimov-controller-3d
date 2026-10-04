@@ -300,3 +300,31 @@ export const ASIMOV_ROOT_BODY = 'pelvis_link';
 export const ASIMOV_HEAD_BODY = 'neck_pitch_link';
 export const ASIMOV_LEFT_FOOT_BODY = 'left_ankle_roll_link';
 export const ASIMOV_RIGHT_FOOT_BODY = 'right_ankle_roll_link';
+
+export const CANONICAL_SIM_JOINTS: readonly string[] = [
+  'left_hip_pitch_joint',       // 0
+  'left_hip_roll_joint',        // 1
+  'left_hip_yaw_joint',         // 2
+  'left_knee_joint',            // 3
+  'left_ankle_pitch_joint',     // 4
+  'left_ankle_roll_joint',      // 5
+  'right_hip_pitch_joint',      // 6
+  'right_hip_roll_joint',       // 7
+  'right_hip_yaw_joint',        // 8
+  'right_knee_joint',           // 9
+  'right_ankle_pitch_joint',    // 10
+  'right_ankle_roll_joint',     // 11
+  'left_shoulder_pitch_joint',  // 12
+  'left_shoulder_roll_joint',   // 13
+  'left_shoulder_yaw_joint',    // 14
+  'left_elbow_joint',           // 15
+  'left_wrist_yaw_joint',       // 16
+  'right_shoulder_pitch_joint', // 17
+  'right_shoulder_roll_joint',  // 18
+  'right_shoulder_yaw_joint',   // 19
+  'right_elbow_joint',          // 20
+  'right_wrist_yaw_joint',      // 21
+  'waist_yaw_joint',            // 22
+  'neck_yaw_joint',             // 23
+  'neck_pitch_joint',           // 24
+];
