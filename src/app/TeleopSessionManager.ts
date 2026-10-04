@@ -21,6 +21,8 @@ export interface TeleopSessionOptions {
   port?: number;
   autoConnect?: boolean;
   interpolationDelayMs?: number;
+  reconnectIntervalMs?: number;
+  maxReconnectAttempts?: number;
 }
 
 export class TeleopSessionManager {
@@ -52,6 +54,8 @@ export class TeleopSessionManager {
       host,
       port,
       autoReconnect: true,
+      reconnectIntervalMs: options.reconnectIntervalMs,
+      maxReconnectAttempts: options.maxReconnectAttempts,
       onStateReceived: (state) => {
         this.buffer.pushState(state);
       },
@@ -59,6 +63,9 @@ export class TeleopSessionManager {
         if (state === 'CONNECTED') {
           // Flush stale pre-disconnect snapshots upon fresh handshake
           this.buffer.reset();
+        } else if (state === 'DISCONNECTED' || state === 'RECONNECTING' || state === 'FAILED') {
+          // Immediately kill stale velocity targets
+          this.teleop?.reset();
         }
         for (const listener of this.connectionListeners) {
           try {

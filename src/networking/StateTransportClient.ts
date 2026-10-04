@@ -36,6 +36,8 @@ export interface NetworkMetrics {
   packetLossPercent: number;
   lastSequenceNumber: number;
   lastPacketTimestamp: number;
+  lastPacketArrivalWallTime: number;
+  lastPacketAgeMs: number;
   rttMs: number;
   stalePacketsRejected: number;
   malformedPacketsRejected: number;
@@ -81,6 +83,8 @@ export class StateTransportClient {
     packetLossPercent: 0,
     lastSequenceNumber: 0,
     lastPacketTimestamp: 0,
+    lastPacketArrivalWallTime: 0,
+    lastPacketAgeMs: 0,
     rttMs: 0,
     stalePacketsRejected: 0,
     malformedPacketsRejected: 0,
@@ -241,6 +245,8 @@ export class StateTransportClient {
       this.metrics.lastSequenceNumber = seq;
       this.expectedSequence = seq + 1;
       this.metrics.lastPacketTimestamp = state.timestamp;
+      this.metrics.lastPacketArrivalWallTime = now;
+      this.metrics.lastPacketAgeMs = 0;
       this.metrics.packetsReceived++;
 
       // Track packet arrival for real packet rate calculation
@@ -375,6 +381,9 @@ export class StateTransportClient {
    * Get low-frequency empirical diagnostics snapshot (for UI HUD @ 2-4 Hz)
    */
   public getMetrics(): NetworkMetrics {
+    const now = Date.now();
+    const lastArrival = this.metrics.lastPacketArrivalWallTime;
+    this.metrics.lastPacketAgeMs = lastArrival > 0 ? Math.max(0, now - lastArrival) : 0;
     return { ...this.metrics };
   }
 

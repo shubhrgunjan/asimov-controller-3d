@@ -172,4 +172,14 @@ export class TeleopController {
       lastDispatchTime: this.lastDispatchTime,
     };
   }
+
+  public reset(): void {
+    this.leftX = 0;
+    this.leftY = 0;
+    this.rightX = 0;
+    this.targetVx = 0;
+    this.targetVy = 0;
+    this.targetWz = 0;
+    this.isMoving = false;
+  }
 }

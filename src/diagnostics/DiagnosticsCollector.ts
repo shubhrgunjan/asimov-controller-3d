@@ -115,6 +115,8 @@ export class DiagnosticsCollector {
           packetLossPercent: 0,
           lastSequenceNumber: 0,
           lastPacketTimestamp: 0,
+          lastPacketArrivalWallTime: 0,
+          lastPacketAgeMs: 0,
           rttMs: 0,
           stalePacketsRejected: 0,
           malformedPacketsRejected: 0,
