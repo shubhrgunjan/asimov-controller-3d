@@ -62,6 +62,9 @@ export interface FullSystemDiagnostics {
     newestSequence: number;
     staleStateCount: number;
     isExtrapolated: boolean;
+    interpolationDelayMs: number;
+    jitterMs: number;
+    starvationCount: number;
   };
 }
 
@@ -203,6 +206,18 @@ export class DiagnosticsCollector {
         newestSequence: newestSeq,
         staleStateCount: staleCount,
         isExtrapolated,
+        interpolationDelayMs:
+          this.stateBuffer && typeof this.stateBuffer.getInterpolationDelayMs === 'function'
+            ? this.stateBuffer.getInterpolationDelayMs()
+            : 40,
+        jitterMs:
+          this.stateBuffer && typeof this.stateBuffer.getJitterMs === 'function'
+            ? this.stateBuffer.getJitterMs()
+            : 0,
+        starvationCount:
+          this.stateBuffer && typeof this.stateBuffer.getStarvationCount === 'function'
+            ? this.stateBuffer.getStarvationCount()
+            : 0,
       },
     };
   }

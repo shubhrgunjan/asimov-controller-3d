@@ -182,10 +182,18 @@ export const DiagnosticsHUD: React.FC<DiagnosticsHUDProps> = ({
                 <Text style={styles.val}>#{diag.synchronization.newestSequence}</Text>
               </View>
               <View style={styles.item}>
-                <Text style={styles.label}>STALE COUNT</Text>
+                <Text style={styles.label}>STALE / EXTRAP</Text>
                 <Text style={styles.val}>
                   {diag.synchronization.staleStateCount} {diag.synchronization.isExtrapolated ? '[EXTRAP]' : ''}
                 </Text>
+              </View>
+              <View style={styles.item}>
+                <Text style={styles.label}>BUFFER DELAY</Text>
+                <Text style={styles.val}>{diag.synchronization.interpolationDelayMs.toFixed(0)} ms</Text>
+              </View>
+              <View style={styles.item}>
+                <Text style={styles.label}>EST JITTER</Text>
+                <Text style={styles.val}>{diag.synchronization.jitterMs.toFixed(1)} ms</Text>
               </View>
             </View>
           </View>
