@@ -33,18 +33,27 @@ export interface StateBufferOptions {
   capacity?: number;
   interpolationDelayMs?: number; // default: 40ms (2 packet intervals @ 50 Hz)
   maxExtrapolationMs?: number; // default: 100ms
+  adaptiveBuffer?: boolean;
 }
 
 export class StateBuffer {
   private capacity: number;
   private interpolationDelaySec: number;
   private maxExtrapolationSec: number;
+  private adaptiveBuffer: boolean = false;
 
   private snapshots: AsimovRobotState[] = [];
   private lastSequenceNumber: number = 0;
   private lastTimestamp: number = 0;
   private staleCount: number = 0;
   private lastPushWallTime: number = 0;
+
+  // Real-time jitter & starvation telemetry
+  private lastArrivalWallTime: number = 0;
+  private lastSenderTimestamp: number = 0;
+  private estimatedJitterMs: number = 0;
+  private starvationCount: number = 0;
+  private extrapolationCount: number = 0;
 
   // Pre-allocated reusable pose output to avoid GC in the 60 FPS render loop
   private readonly cachedPose: InterpolatedRobotPose = {
@@ -67,6 +76,7 @@ export class StateBuffer {
     this.capacity = options.capacity || 16;
     this.interpolationDelaySec = (options.interpolationDelayMs || 40) / 1000.0;
     this.maxExtrapolationSec = (options.maxExtrapolationMs || 100) / 1000.0;
+    this.adaptiveBuffer = options.adaptiveBuffer ?? false;
   }
 
   /**
@@ -77,7 +87,23 @@ export class StateBuffer {
   public pushState(state: AsimovRobotState): boolean {
     const seq = state.sequenceNumber;
     const time = state.timestamp;
-    this.lastPushWallTime = Date.now();
+    const wallNow = Date.now();
+    this.lastPushWallTime = wallNow;
+
+    // RFC 3550 Inter-Arrival Jitter Calculation
+    if (this.lastArrivalWallTime > 0 && this.lastSenderTimestamp > 0) {
+      const transitDiff = (wallNow - this.lastArrivalWallTime) - (time - this.lastSenderTimestamp) * 1000.0;
+      const d = Math.abs(transitDiff);
+      this.estimatedJitterMs += (d - this.estimatedJitterMs) / 16.0;
+
+      if (this.adaptiveBuffer) {
+        // Nominal interval is 20ms @ 50Hz. Delay = 20ms + 2 * Jitter, clamped between 20ms and 50ms
+        const targetDelay = Math.min(50, Math.max(20, 20 + 2.0 * this.estimatedJitterMs));
+        this.interpolationDelaySec = targetDelay / 1000.0;
+      }
+    }
+    this.lastArrivalWallTime = wallNow;
+    this.lastSenderTimestamp = time;
 
     // 1. Detect server reset or timestamp discontinuity
     // If timestamp jumps backwards by more than 1.0 second, reset buffer
@@ -148,10 +174,12 @@ export class StateBuffer {
 
     // 3. Target is at or beyond the newest snapshot (packet delay/jitter)
     if (t >= newest.timestamp) {
+      this.starvationCount++;
       const deltaBeyond = t - newest.timestamp;
       this.copySnapshotToPose(newest, out);
 
       if (deltaBeyond > 0 && deltaBeyond <= this.maxExtrapolationSec) {
+        this.extrapolationCount++;
         // Safe linear extrapolation of base position
         out.basePosition[0] += newest.linearVelocity[0] * deltaBeyond;
         out.basePosition[1] += newest.linearVelocity[1] * deltaBeyond;
@@ -301,6 +329,9 @@ export class StateBuffer {
     this.snapshots = [];
     this.lastSequenceNumber = 0;
     this.lastTimestamp = 0;
+    this.lastArrivalWallTime = 0;
+    this.lastSenderTimestamp = 0;
+    this.estimatedJitterMs = 0;
   }
 
   public getDepth(): number {
@@ -329,5 +360,25 @@ export class StateBuffer {
 
   public getInterpolationDelayMs(): number {
     return this.interpolationDelaySec * 1000.0;
+  }
+
+  public getJitterMs(): number {
+    return Math.round(this.estimatedJitterMs * 10) / 10;
+  }
+
+  public getStarvationCount(): number {
+    return this.starvationCount;
+  }
+
+  public getExtrapolationCount(): number {
+    return this.extrapolationCount;
+  }
+
+  public setAdaptiveBuffer(enabled: boolean): void {
+    this.adaptiveBuffer = enabled;
+  }
+
+  public isAdaptiveBuffer(): boolean {
+    return this.adaptiveBuffer;
   }
 }
