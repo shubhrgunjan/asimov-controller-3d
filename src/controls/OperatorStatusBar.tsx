@@ -12,6 +12,7 @@ import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { CameraMode } from '../renderer/SceneManager';
 import { RobotMode, PolicyId, RecoveryState } from '../protocol/AsimovStateProtocol';
 import { GlobalConnectionState } from '../app/navigation/AppStateMachine';
+import { RemoteViewMode } from '../cameras/RemoteCameraSurface';
 
 export interface OperatorStatusBarProps {
   connectionState: GlobalConnectionState;
@@ -23,7 +24,9 @@ export interface OperatorStatusBarProps {
   packetRateHz: number;
   rttMs: number;
   currentCamera: CameraMode;
+  remoteViewMode?: RemoteViewMode;
   onSelectCamera: (mode: CameraMode) => void;
+  onToggleRemoteView?: () => void;
   onOpenSettings: () => void;
   onExitToHome: () => void;
 }
@@ -38,7 +41,9 @@ export const OperatorStatusBar: React.FC<OperatorStatusBarProps> = ({
   packetRateHz,
   rttMs,
   currentCamera,
+  remoteViewMode = 'HIDDEN',
   onSelectCamera,
+  onToggleRemoteView,
   onOpenSettings,
   onExitToHome,
 }) => {
@@ -138,6 +143,24 @@ export const OperatorStatusBar: React.FC<OperatorStatusBarProps> = ({
             }
           )}
         </View>
+
+        {/* Remote Camera Toggle */}
+        {onToggleRemoteView && (
+          <TouchableOpacity
+            style={[styles.remoteCamBtn, remoteViewMode !== 'HIDDEN' && styles.remoteCamBtnActive]}
+            onPress={onToggleRemoteView}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.remoteCamText,
+                remoteViewMode !== 'HIDDEN' && styles.remoteCamTextActive,
+              ]}
+            >
+              {remoteViewMode === 'HIDDEN' ? '📷 VIDEO' : `📷 ${remoteViewMode}`}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Settings & Connection Pill */}
         <View style={styles.rightSection}>
@@ -313,6 +336,28 @@ const styles = StyleSheet.create({
   settingsIcon: {
     color: '#cbd5e1',
     fontSize: 12,
+  },
+  remoteCamBtn: {
+    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  remoteCamBtnActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#38bdf8',
+  },
+  remoteCamText: {
+    color: '#94a3b8',
+    fontSize: 9,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+  },
+  remoteCamTextActive: {
+    color: '#ffffff',
   },
   statusStrip: {
     flexDirection: 'row',

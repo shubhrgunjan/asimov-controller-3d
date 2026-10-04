@@ -20,6 +20,7 @@ import { CameraMode } from '../renderer/SceneManager';
 import { OperatorStatusBar } from './OperatorStatusBar';
 import { GlobalConnectionState } from '../app/navigation/AppStateMachine';
 import { InterpolatedRobotPose } from '../synchronization/StateBuffer';
+import { RemoteCameraSurface } from '../cameras/RemoteCameraSurface';
 
 export interface TeleopControlsOverlayProps {
   controller: TeleopController;
@@ -43,6 +44,8 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
   currentCamera,
   onSelectCamera,
   connectionState,
+  host,
+  port,
   latestPose,
   rttMs = 0,
   packetRateHz = 0,
@@ -53,6 +56,7 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
 }) => {
   const [activeMode, setActiveMode] = useState<CommandType>(CommandType.STAND);
   const [cmdVelocities, setCmdVelocities] = useState({ vx: 0, vy: 0, wz: 0 });
+  const [remoteViewMode, setRemoteViewMode] = useState<'PIP' | 'SPLIT' | 'HIDDEN'>('HIDDEN');
 
   // Poll commanded velocities at ~10 Hz for smooth operator feedback
   useEffect(() => {
@@ -65,6 +69,10 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
   const handleCommand = (cmd: CommandType) => {
     setActiveMode(cmd);
     controller.triggerAction(cmd);
+  };
+
+  const handleToggleRemoteView = () => {
+    setRemoteViewMode((m) => (m === 'HIDDEN' ? 'PIP' : m === 'PIP' ? 'SPLIT' : 'HIDDEN'));
   };
 
   const isConnected = connectionState === 'CONNECTED';
@@ -91,9 +99,20 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
         packetRateHz={packetRateHz}
         rttMs={rttMs}
         currentCamera={currentCamera}
+        remoteViewMode={remoteViewMode}
         onSelectCamera={onSelectCamera}
+        onToggleRemoteView={handleToggleRemoteView}
         onOpenSettings={onOpenSettings}
         onExitToHome={onExitToHome}
+      />
+
+      {/* 2. OPTIONAL SECONDARY REMOTE CAMERA OBSERVATION SURFACE */}
+      <RemoteCameraSurface
+        host={host}
+        port={port}
+        viewMode={remoteViewMode}
+        onClose={() => setRemoteViewMode('HIDDEN')}
+        onToggleViewMode={() => setRemoteViewMode((m) => (m === 'PIP' ? 'SPLIT' : 'PIP'))}
       />
 
       {/* 2. CONNECTION INTERRUPTED SAFETY BANNER */}
