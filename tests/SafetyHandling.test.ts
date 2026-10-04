@@ -132,14 +132,17 @@ describe('Phase 3 Failure & Safety Handling Suite (P3.9)', () => {
     buffer.pushState(createDummyState(1, 1.00, 0.0));
     buffer.pushState(createDummyState(2, 1.02, 0.01)); // linear velocity 0.5 m/s
 
-    // Request render pose 500ms after last packet (severe starvation)
+    // Request render pose 50ms after last packet (within 100ms maxExtrapolation) -> safe extrapolation
+    const extraPose = buffer.getInterpolatedPose(1.02 + 0.05);
+    expect(extraPose).not.toBeNull();
+    expect(extraPose!.isExtrapolated).toBe(true);
+    expect(extraPose!.basePosition[0]).toBeGreaterThan(0.01);
+
+    // Request render pose 500ms after last packet (> 100ms maxExtrapolation) -> extrapolation ceases, holds latest pose
     const starvePose = buffer.getInterpolatedPose(1.02 + 0.50);
     expect(starvePose).not.toBeNull();
-    expect(starvePose!.isExtrapolated).toBe(true);
-
-    // Base position must be clamped within maxExtrapolation (0.10s * 0.5 m/s = 0.05m extra)
-    // and must not drift to runaway distances (e.g. 0.5s * 0.5m/s = 0.25m)
-    expect(starvePose!.basePosition[0]).toBeLessThanOrEqual(0.01 + 0.055);
+    expect(starvePose!.isExtrapolated).toBe(false);
+    expect(starvePose!.basePosition[0]).toBeCloseTo(0.01, 3);
   });
 
   test('P3.9.4: Clean reconnect flushes pre-disconnect state without blending', () => {

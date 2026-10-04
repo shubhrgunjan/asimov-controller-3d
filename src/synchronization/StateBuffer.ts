@@ -151,12 +151,11 @@ export class StateBuffer {
       const deltaBeyond = t - newest.timestamp;
       this.copySnapshotToPose(newest, out);
 
-      if (deltaBeyond > 0) {
-        // Safe clamped linear extrapolation of base position
-        const clampedDelta = Math.min(deltaBeyond, this.maxExtrapolationSec);
-        out.basePosition[0] += newest.linearVelocity[0] * clampedDelta;
-        out.basePosition[1] += newest.linearVelocity[1] * clampedDelta;
-        out.basePosition[2] += newest.linearVelocity[2] * clampedDelta;
+      if (deltaBeyond > 0 && deltaBeyond <= this.maxExtrapolationSec) {
+        // Safe linear extrapolation of base position
+        out.basePosition[0] += newest.linearVelocity[0] * deltaBeyond;
+        out.basePosition[1] += newest.linearVelocity[1] * deltaBeyond;
+        out.basePosition[2] += newest.linearVelocity[2] * deltaBeyond;
         out.isExtrapolated = true;
       } else {
         out.isExtrapolated = false;
