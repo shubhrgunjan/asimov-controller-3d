@@ -5,6 +5,7 @@ import { BenchmarkScene, BenchmarkLevel, WORKLOAD_SPECS } from './BenchmarkScene
 import { PerformanceMonitor, SteadyStateSummary, MonitorPhase } from './PerformanceMonitor';
 import { AssetLoader, AssetTestResult } from '../renderer/AssetLoader';
 import { ValidationPoseName } from '../model/AsimovRobotModel';
+import { TeleopSessionManager } from '../app/TeleopSessionManager';
 
 export type BottleneckDiagnosis =
   | 'BALANCED_60FPS'
@@ -45,11 +46,18 @@ export class BenchmarkController {
   public readonly scene: BenchmarkScene;
   public readonly monitor: PerformanceMonitor;
   public readonly assetLoader: AssetLoader;
+  public readonly teleopSession: TeleopSessionManager;
+
+  public appMode: 'TELEOP' | 'BENCHMARK' = 'TELEOP';
 
   private isRunning: boolean = false;
   private animFrameId: number | null = null;
   private lastTimeSeconds: number = 0;
   private listeners: Set<BenchmarkStateListener> = new Set();
+
+  // Reusable scratch vectors to avoid GC allocations in 60 FPS render loop
+  private scratchHeadPos = new THREE.Vector3();
+  private scratchPelvisPos = new THREE.Vector3();
 
   // Throttled UI notification timer to avoid React reconciliation overhead
   private lastUiNotifyTimeMs: number = 0;
@@ -69,6 +77,20 @@ export class BenchmarkController {
     this.scene = new BenchmarkScene(this.sceneManager);
     this.monitor = new PerformanceMonitor(60);
     this.assetLoader = new AssetLoader();
+    this.teleopSession = new TeleopSessionManager(this.scene.robotModel, this.monitor, {
+      host: '10.222.5.132',
+      port: 8854,
+      autoConnect: false,
+    });
+  }
+
+  public setAppMode(mode: 'TELEOP' | 'BENCHMARK'): void {
+    this.appMode = mode;
+    this.notifyListeners();
+  }
+
+  public getAppMode(): 'TELEOP' | 'BENCHMARK' {
+    return this.appMode;
   }
 
   public subscribe(listener: BenchmarkStateListener): () => void {
@@ -108,15 +130,17 @@ export class BenchmarkController {
     const deltaSeconds = Math.min(0.1, nowSeconds - this.lastTimeSeconds);
     this.lastTimeSeconds = nowSeconds;
 
-    // 1. Update Camera and Lighting with live robot anchors
-    const headPos = new THREE.Vector3();
-    const pelvisPos = new THREE.Vector3();
-    this.scene.robotModel.getHeadWorldPosition(headPos);
-    this.scene.robotModel.getPelvisWorldPosition(pelvisPos);
-    this.sceneManager.update(nowSeconds, deltaSeconds, headPos, pelvisPos);
+    // 1. Update Camera and Lighting with live robot anchors (zero allocations)
+    this.scene.robotModel.getHeadWorldPosition(this.scratchHeadPos);
+    this.scene.robotModel.getPelvisWorldPosition(this.scratchPelvisPos);
+    this.sceneManager.update(nowSeconds, deltaSeconds, this.scratchHeadPos, this.scratchPelvisPos);
 
     // 2. Update Dynamic Workload / Kinematic Joints
-    this.scene.update(nowSeconds, deltaSeconds);
+    if (this.appMode === 'TELEOP') {
+      this.teleopSession.update();
+    } else {
+      this.scene.update(nowSeconds, deltaSeconds);
+    }
 
     // 3. Render Three.js Scene and swap EGL buffer
     const renderStats = this.renderer.render(this.sceneManager.scene, this.sceneManager.camera);
@@ -461,6 +485,7 @@ export class BenchmarkController {
 
   public dispose(): void {
     this.stop();
+    this.teleopSession.dispose();
     this.sceneManager.dispose();
     this.renderer.dispose();
     this.listeners.clear();
