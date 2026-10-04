@@ -123,4 +123,116 @@ describe('P4.3 & P4.5: Teleoperation UI & Operator Status Presentation', () => {
     controller.releaseRightJoystick();
     expect(controller.getTargetVelocities().wz).toBe(0);
   });
+
+  test('P5.1: Speed Profiles scale velocities appropriately', () => {
+    // 1. PRECISION Profile
+    controller.setSpeedProfile('PRECISION');
+    expect(controller.getSpeedProfile()).toBe('PRECISION');
+    controller.updateLeftJoystick(0.0, 1.0); // Full forward
+    let v = controller.getTargetVelocities();
+    expect(v.vx).toBeCloseTo(0.28, 2);
+
+    controller.updateLeftJoystick(0.0, -1.0); // Full reverse
+    v = controller.getTargetVelocities();
+    expect(v.vx).toBeCloseTo(-0.20, 2);
+
+    controller.updateLeftJoystick(-1.0, 0.0); // Full left
+    v = controller.getTargetVelocities();
+    expect(v.vy).toBeCloseTo(0.15, 2);
+
+    controller.updateRightJoystick(-1.0); // Full yaw left
+    v = controller.getTargetVelocities();
+    expect(v.wz).toBeCloseTo(0.30, 2);
+
+    // 2. NORMAL Profile
+    controller.setSpeedProfile('NORMAL');
+    expect(controller.getSpeedProfile()).toBe('NORMAL');
+    controller.updateLeftJoystick(0.0, 1.0);
+    v = controller.getTargetVelocities();
+    expect(v.vx).toBeCloseTo(0.60, 2);
+
+    // 3. SPORT Profile
+    controller.setSpeedProfile('SPORT');
+    expect(controller.getSpeedProfile()).toBe('SPORT');
+    controller.updateLeftJoystick(0.0, 1.0);
+    v = controller.getTargetVelocities();
+    expect(v.vx).toBeCloseTo(0.80, 2);
+  });
+
+  test('P5.1: Response Curves shape near-center deflection smoothly', () => {
+    controller.setSpeedProfile('SPORT');
+
+    // Linear curve: at 0.5 deflection -> 0.5 * 0.8 = 0.40 m/s
+    controller.setResponseCurve('LINEAR');
+    expect(controller.getResponseCurve()).toBe('LINEAR');
+    controller.updateLeftJoystick(0.0, 0.5);
+    let vLinear = controller.getTargetVelocities().vx;
+    expect(vLinear).toBeCloseTo(0.40, 2);
+
+    // Exponential curve (gamma=1.5): at 0.5 deflection -> (0.5)^1.5 * 0.8 = 0.3535 * 0.8 ≈ 0.283 m/s
+    controller.setResponseCurve('EXPONENTIAL');
+    expect(controller.getResponseCurve()).toBe('EXPONENTIAL');
+    controller.updateLeftJoystick(0.0, 0.5);
+    let vExp = controller.getTargetVelocities().vx;
+    expect(vExp).toBeLessThan(vLinear);
+    expect(vExp).toBeCloseTo(0.283, 2);
+
+    // Cubic curve: at 0.5 deflection -> (0.3*0.5 + 0.7*0.125)*0.8 = 0.2375 * 0.8 = 0.19 m/s
+    controller.setResponseCurve('CUBIC');
+    expect(controller.getResponseCurve()).toBe('CUBIC');
+    controller.updateLeftJoystick(0.0, 0.5);
+    let vCubic = controller.getTargetVelocities().vx;
+    expect(vCubic).toBeLessThan(vExp);
+    expect(vCubic).toBeCloseTo(0.19, 2);
+  });
+
+  test('P5.1: Operator Control Lock blocks inputs and mode changes, but E-STOP bypasses', () => {
+    controller.setControlLock(true);
+    expect(controller.isControlLocked()).toBe(true);
+
+    // Joystick input must be ignored
+    controller.updateLeftJoystick(0.0, 1.0);
+    expect(controller.getTargetVelocities().vx).toBe(0);
+
+    // Regular action buttons must be blocked
+    const walkOk = controller.triggerAction(CommandType.WALK);
+    expect(walkOk).toBe(false);
+
+    // E-STOP must always bypass control lock
+    const estopOk = controller.triggerAction(CommandType.ESTOP);
+    expect(estopOk).toBe(true);
+
+    // Unlocking restores control
+    controller.setControlLock(false);
+    expect(controller.isControlLocked()).toBe(false);
+    controller.updateLeftJoystick(0.0, 1.0);
+    expect(controller.getTargetVelocities().vx).toBeGreaterThan(0);
+  });
+
+  test('P5.1: Strict boundary value verification against backend contracts', () => {
+    controller.setSpeedProfile('SPORT');
+    controller.setResponseCurve('LINEAR');
+
+    // Forward limit <= +0.8
+    controller.updateLeftJoystick(0.0, 1.0);
+    expect(controller.getTargetVelocities().vx).toBeLessThanOrEqual(0.8);
+    expect(controller.getTargetVelocities().vx).toBeGreaterThanOrEqual(0.0);
+
+    // Reverse limit >= -0.4
+    controller.updateLeftJoystick(0.0, -1.0);
+    expect(controller.getTargetVelocities().vx).toBeGreaterThanOrEqual(-0.4);
+    expect(controller.getTargetVelocities().vx).toBeLessThanOrEqual(0.0);
+
+    // Lateral limit within [-0.3, +0.3]
+    controller.updateLeftJoystick(-1.0, 0.0);
+    expect(controller.getTargetVelocities().vy).toBeCloseTo(0.3, 2);
+    controller.updateLeftJoystick(1.0, 0.0);
+    expect(controller.getTargetVelocities().vy).toBeCloseTo(-0.3, 2);
+
+    // Yaw limit within [-0.6, +0.6]
+    controller.updateRightJoystick(-1.0);
+    expect(controller.getTargetVelocities().wz).toBeCloseTo(0.6, 2);
+    controller.updateRightJoystick(1.0);
+    expect(controller.getTargetVelocities().wz).toBeCloseTo(-0.6, 2);
+  });
 });

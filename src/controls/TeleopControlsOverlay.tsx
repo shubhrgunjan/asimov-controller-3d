@@ -14,7 +14,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { VirtualJoystick } from './VirtualJoystick';
-import { TeleopController } from './TeleopController';
+import { TeleopController, SpeedProfile } from './TeleopController';
 import { CommandType, RobotMode, PolicyId, RecoveryState } from '../protocol/AsimovStateProtocol';
 import { CameraMode } from '../renderer/SceneManager';
 import { OperatorStatusBar } from './OperatorStatusBar';
@@ -57,6 +57,19 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
   const [activeMode, setActiveMode] = useState<CommandType>(CommandType.STAND);
   const [cmdVelocities, setCmdVelocities] = useState({ vx: 0, vy: 0, wz: 0 });
   const [remoteViewMode, setRemoteViewMode] = useState<'PIP' | 'SPLIT' | 'HIDDEN'>('HIDDEN');
+  const [speedProfile, setSpeedProfileState] = useState<SpeedProfile>('SPORT');
+  const [isLocked, setIsLockedState] = useState<boolean>(false);
+
+  const handleSelectSpeedProfile = (profile: SpeedProfile) => {
+    controller.setSpeedProfile(profile);
+    setSpeedProfileState(profile);
+  };
+
+  const handleToggleLock = () => {
+    const next = !isLocked;
+    controller.setControlLock(next);
+    setIsLockedState(next);
+  };
 
   // Poll commanded velocities at ~10 Hz for smooth operator feedback
   useEffect(() => {
@@ -203,6 +216,32 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
               activeOpacity={0.7}
             >
               <Text style={[styles.modeBtnText, styles.modeBtnTextRecovery]}>RECOVER</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Speed Scaling & Lock Row */}
+          <View style={styles.speedRow}>
+            {(['PRECISION', 'NORMAL', 'SPORT'] as SpeedProfile[]).map((prof) => (
+              <TouchableOpacity
+                key={prof}
+                style={[styles.speedBtn, speedProfile === prof && styles.speedBtnActive]}
+                onPress={() => handleSelectSpeedProfile(prof)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.speedBtnText, speedProfile === prof && styles.speedBtnTextActive]}>
+                  {prof}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={[styles.lockBtn, isLocked && styles.lockBtnActive]}
+              onPress={handleToggleLock}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.lockBtnText, isLocked && styles.lockBtnTextActive]}>
+                {isLocked ? '🔒 LOCKED' : '🔓 UNLOCKED'}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -370,6 +409,54 @@ const styles = StyleSheet.create({
   },
   modeBtnTextRecovery: {
     color: '#fbbf24',
+  },
+  speedRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  speedBtn: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  speedBtnActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#38bdf8',
+  },
+  speedBtnText: {
+    color: '#94a3b8',
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  speedBtnTextActive: {
+    color: '#ffffff',
+  },
+  lockBtn: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  lockBtnActive: {
+    backgroundColor: '#b91c1c',
+    borderColor: '#f87171',
+  },
+  lockBtnText: {
+    color: '#94a3b8',
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  lockBtnTextActive: {
+    color: '#ffffff',
   },
   auxRow: {
     flexDirection: 'row',

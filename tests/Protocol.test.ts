@@ -184,4 +184,37 @@ describe('Phase 3 Protocol Suite: VAS1 & VAC1', () => {
     expect(parsed.sequenceNumber).toBe(4294967295);
     expect(parsed.timestamp).toBeCloseTo(99999999.999, 3);
   });
+
+  test('P5.1: VAC1 command boundary value roundtrips (vx: -0.4, 0, +0.8; vy: -0.3, 0, +0.3; wz: -0.6, 0, +0.6)', () => {
+    const boundaryCases = [
+      { vx: -0.4, vy: -0.3, wz: -0.6 },
+      { vx: 0.0, vy: 0.0, wz: 0.0 },
+      { vx: 0.8, vy: 0.3, wz: 0.6 },
+      { vx: 0.8, vy: -0.3, wz: -0.6 },
+      { vx: -0.4, vy: 0.3, wz: 0.6 },
+    ];
+
+    for (let i = 0; i < boundaryCases.length; i++) {
+      const bc = boundaryCases[i];
+      const cmd: AsimovControlCommand = {
+        protocolVersion: PROTOCOL_VERSION,
+        commandType: CommandType.WALK,
+        flags: 0,
+        sequenceNumber: 1000 + i,
+        timestamp: 50.0 + i,
+        linearX: bc.vx,
+        linearY: bc.vy,
+        yawRate: bc.wz,
+      };
+
+      const buf = serializeCommandPacket(cmd);
+      expect(buf.byteLength).toBe(COMMAND_PACKET_SIZE);
+
+      const parsed = parseCommandPacket(buf);
+      expect(parsed.linearX).toBeCloseTo(bc.vx, 4);
+      expect(parsed.linearY).toBeCloseTo(bc.vy, 4);
+      expect(parsed.yawRate).toBeCloseTo(bc.wz, 4);
+      expect(parsed.commandType).toBe(CommandType.WALK);
+    }
+  });
 });
