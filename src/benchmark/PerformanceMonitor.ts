@@ -305,6 +305,59 @@ export class PerformanceMonitor {
   }
 
   /**
+   * Returns current instantaneous & rolling window metrics for real-time diagnostics HUD
+   */
+  public getCurrentMetrics(): {
+    fps: number;
+    meanInterval: number;
+    p95Interval: number;
+    p99Interval: number;
+    jankPercent: number;
+    missedVsyncs: number;
+    cpuTime: number;
+    cpuHeadroom: number;
+  } {
+    const history = this.recentFrameHistory;
+    if (history.length === 0) {
+      return {
+        fps: this.targetFps,
+        meanInterval: this.targetFrameBudgetMs,
+        p95Interval: this.targetFrameBudgetMs,
+        p99Interval: this.targetFrameBudgetMs,
+        jankPercent: 0,
+        missedVsyncs: 0,
+        cpuTime: this.latestMetrics.renderCpuTimeMs,
+        cpuHeadroom: Math.max(0, this.targetFrameBudgetMs - this.latestMetrics.renderCpuTimeMs),
+      };
+    }
+
+    const n = history.length;
+    const sum = history.reduce((a, b) => a + b, 0);
+    const mean = sum / n;
+    const sorted = [...history].sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(n * 0.95)] || mean;
+    const p99 = sorted[Math.floor(n * 0.99)] || mean;
+
+    const vsyncLimitMs = this.targetFrameBudgetMs * 1.45;
+    const missed = history.filter((t) => t > vsyncLimitMs).length;
+    const jankPercent = (missed / n) * 100;
+    const fps = Math.min(this.targetFps, Math.round((1000 / Math.max(1.0, mean)) * 10) / 10);
+    const cpuTime = this.latestMetrics.renderCpuTimeMs;
+    const cpuHeadroom = Math.max(0, this.targetFrameBudgetMs - cpuTime);
+
+    return {
+      fps,
+      meanInterval: Math.round(mean * 100) / 100,
+      p95Interval: Math.round(p95 * 100) / 100,
+      p99Interval: Math.round(p99 * 100) / 100,
+      jankPercent: Math.round(jankPercent * 10) / 10,
+      missedVsyncs: missed,
+      cpuTime: Math.round(cpuTime * 100) / 100,
+      cpuHeadroom: Math.round(cpuHeadroom * 100) / 100,
+    };
+  }
+
+  /**
    * Generates complete steady-state statistical summary
    */
   public getSummary(): SteadyStateSummary {
