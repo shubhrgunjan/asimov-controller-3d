@@ -25,15 +25,21 @@ All physical hardware benchmarks, presentation metrics, and thermal endurance ob
 
 To ensure total scientific integrity and eliminate any confusion between simulated and measured metrics, the instrumentation mechanism on the physical Android hardware is documented below:
 
-### 1.1 Physical Display Presentation Cadence (Android Choreographer)
+### 1.1 VSync-Driven Frame Callback Timing (Android Choreographer)
 In React Native with `expo-gl`:
 - The rendering loop is driven by `requestAnimationFrame(this.loop)`.
-- On native Android, `requestAnimationFrame` is hooked directly to **`android.view.Choreographer.postFrameCallback`**, which fires precisely upon the hardware display VSync signal.
+- On native Android, `requestAnimationFrame` is hooked directly to **`android.view.Choreographer.postFrameCallback`**, which is scheduled by the Android framework when a hardware display VSync signal occurs.
 - The high-resolution monotonic timer `performance.now()` is sampled at the beginning of each frame callback.
-- The actual presentation interval is computed as:
-  $$\Delta t_{\text{presentation}} = \text{now} - \text{lastFrameTimestamp}$$
-- When running on physical hardware, no simulated delta is provided. Thus, $\Delta t_{\text{presentation}}$ captures the **genuine elapsed time between physical display screen refreshes**.
-- A display refresh interval $> 1.45 \times 16.67\text{ ms}$ ($> 24.2\text{ ms}$) is counted as a `missedVsync`.
+- The VSync-driven frame callback interval is computed as:
+  $$\Delta t_{\text{callback}} = \text{now} - \text{lastFrameTimestamp}$$
+- When running on physical hardware, no simulated delta is provided. Thus, $\Delta t_{\text{callback}}$ captures the **elapsed time between consecutive VSync-driven Choreographer frame callbacks in JavaScript**.
+- A callback interval $> 1.45 \times 16.67\text{ ms}$ ($> 24.2\text{ ms}$) is counted as a `missedVsync`.
+
+> [!IMPORTANT]
+> **Measurement Scope & SurfaceFlinger Disclaimer:**
+> Every metric reported in this section represents **VSync-driven frame callback timing** measured inside the application JavaScript runtime.
+> **SurfaceFlinger presentation timestamps were not independently captured.**
+> Specifically, independent hardware scan-out, buffer latch, and compositor presentation timestamps (such as those queried via Android system tracing with Perfetto, `dumpsys SurfaceFlinger --latency`, or the Hardware Composer presentation fence `actual_present_time`) were not queried by the JavaScript runtime. Therefore, these metrics reflect the cadence, execution latency, and interval stability of the VSync-driven Choreographer callbacks driving the Three.js render loop, rather than verified hardware compositor scan-out times.
 
 ### 1.2 CPU / Render Preparation Timing
 - Measured with high-precision timestamps surrounding the JavaScript frame preparation pass:
@@ -55,23 +61,24 @@ Measurements obtained directly on the physical Samsung Galaxy M14 5G running the
 ```text
 =================== PHYSICAL DEVICE BENCHMARK MATRIX (GALAXY M14 5G) ===================
 Platform: Samsung Galaxy M14 5G (Android 14 / One UI 6.0 / Mali-G68 MP2)
-Display: 60 Hz locked PLS LCD presentation cadence (16.67 ms VSync interval)
+Measurement: VSync-driven frame callback timing (SurfaceFlinger presentation timestamps not independently captured)
+Target Cadence: 60 Hz locked PLS LCD callback cadence (16.67 ms nominal interval)
 Workload: Asimov 1 Visual Model (113,436 tris, 26 draw calls) + 25-Joint Authoritative Sync
 
-┌────┬───────────────────────────────────────┬─────────┬─────────────┬────────────────┬───────────────┬───────────────┬──────────────┬──────────────┬────────┬──────────────────┐
-│ #  │ Workload Configuration                │ Res     │ Display FPS │ Presented (ms) │ P95 Pres (ms) │ CPU Prep (ms) │ CPU P95 (ms) │ CPU Headroom │ Jank % │ Bottleneck       │
-├────┼───────────────────────────────────────┼─────────┼─────────────┼────────────────┼───────────────┼───────────────┼──────────────┼──────────────┼────────┼──────────────────┤
-│ 1  │ Asimov Static (STAND mode, stationary)│ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.23          │ 0.31         │ 16.44        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 2  │ Asimov Static (STAND mode, stationary)│ '1080p' │ 60.0        │ 16.67          │ 16.82         │ 0.25          │ 0.34         │ 16.42        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 3  │ Asimov Articulated (CROUCH, 25 joints)│ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.28          │ 0.36         │ 16.39        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 4  │ Asimov Articulated (CROUCH, 25 joints)│ '1080p' │ 60.0        │ 16.67          │ 16.82         │ 0.35          │ 0.44         │ 16.32        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 5  │ Walking Gait (Authoritative 50Hz Sync)│ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.31          │ 0.40         │ 16.36        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 6  │ Rapid Camera Switching (3rd/FPV/Orbit)│ '720p'  │ 60.0        │ 16.67          │ 16.82         │ 0.36          │ 0.48         │ 16.31        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 7  │ Active Touch Teleop (25 Hz VAC1 send) │ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.24          │ 0.32         │ 16.43        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 8  │ Active Diagnostics HUD (4 Domains 3Hz)│ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.27          │ 0.35         │ 16.40        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 9  │ Full Combined Workload (All Active)   │ '720p'  │ 60.0        │ 16.67          │ 16.81         │ 0.34          │ 0.45         │ 16.33        │ 0.0%   │ 'BALANCED_60FPS' │
-│ 10 │ Full Combined Workload (All Active)   │ '1080p' │ 60.0        │ 16.67          │ 16.82         │ 0.48          │ 0.62         │ 16.19        │ 0.0%   │ 'BALANCED_60FPS' │
-└────┴───────────────────────────────────────┴─────────┴─────────────┴────────────────┴───────────────┴───────────────┴──────────────┴──────────────┴────────┴──────────────────┘
+┌────┬───────────────────────────────────────┬─────────┬──────────────┬───────────────┬───────────────┬───────────────┬──────────────┬──────────────┬────────┬──────────────────┐
+│ #  │ Workload Configuration                │ Res     │ Callback FPS │ Callback (ms) │ P95 Callb(ms) │ CPU Prep (ms) │ CPU P95 (ms) │ CPU Headroom │ Jank % │ Bottleneck       │
+├────┼───────────────────────────────────────┼─────────┼──────────────┼───────────────┼───────────────┼───────────────┼──────────────┼──────────────┼────────┼──────────────────┤
+│ 1  │ Asimov Static (STAND mode, stationary)│ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.23          │ 0.31         │ 16.44        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 2  │ Asimov Static (STAND mode, stationary)│ '1080p' │ 60.0         │ 16.67         │ 16.82         │ 0.25          │ 0.34         │ 16.42        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 3  │ Asimov Articulated (CROUCH, 25 joints)│ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.28          │ 0.36         │ 16.39        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 4  │ Asimov Articulated (CROUCH, 25 joints)│ '1080p' │ 60.0         │ 16.67         │ 16.82         │ 0.35          │ 0.44         │ 16.32        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 5  │ Walking Gait (Authoritative 50Hz Sync)│ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.31          │ 0.40         │ 16.36        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 6  │ Rapid Camera Switching (3rd/FPV/Orbit)│ '720p'  │ 60.0         │ 16.67         │ 16.82         │ 0.36          │ 0.48         │ 16.31        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 7  │ Active Touch Teleop (25 Hz VAC1 send) │ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.24          │ 0.32         │ 16.43        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 8  │ Active Diagnostics HUD (4 Domains 3Hz)│ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.27          │ 0.35         │ 16.40        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 9  │ Full Combined Workload (All Active)   │ '720p'  │ 60.0         │ 16.67         │ 16.81         │ 0.34          │ 0.45         │ 16.33        │ 0.0%   │ 'BALANCED_60FPS' │
+│ 10 │ Full Combined Workload (All Active)   │ '1080p' │ 60.0         │ 16.67         │ 16.82         │ 0.48          │ 0.62         │ 16.19        │ 0.0%   │ 'BALANCED_60FPS' │
+└────┴───────────────────────────────────────┴─────────┴──────────────┴───────────────┴───────────────┴───────────────┴──────────────┴──────────────┴────────┴──────────────────┘
 ```
 
 ---
@@ -145,7 +152,7 @@ To ensure complete transparency, end-to-end latency is partitioned into its **fo
 - **Intentional Delay:** **$40.00\text{ ms}$**.
 
 ### 4.4 Component 4: Render & Presentation Latency ($T_{\text{render}} = 8.58\text{ ms}$)
-- **Measurement Method:** Measured on physical Samsung Galaxy M14 5G display.
+- **Measurement Method:** Evaluated via JavaScript render preparation timing and estimated 60 Hz hardware VSync phase alignment. *(Note: SurfaceFlinger presentation timestamps were not independently captured; timing reflects Choreographer requestAnimationFrame callbacks).*
 - **CPU Render Prep:** JavaScript scene traversal, matrix updates, and draw submission take **$0.25\text{ ms}$**.
 - **Hardware VSync Alignment Delay:** On a 60 Hz display, the hardware scan-out phase delay between draw submission and display refresh averages half a frame interval (**$8.33\text{ ms}$**, range $0.0–16.67\text{ ms}$).
 - **Total Render / Presentation Latency:** **$8.58\text{ ms}$** mean ($0.25–16.92\text{ ms}$).
@@ -159,12 +166,12 @@ $$\text{Control-to-Display Latency} \approx \mathbf{3.9 \text{ VSync frame inter
 
 ## 5. Thermal & Long-Duration Endurance Validation
 
-Conducted on the physical Samsung Galaxy M14 5G under continuous live teleoperation and 60 FPS rendering for **15 sustained minutes (54,000 presented frames)**:
+Conducted on the physical Samsung Galaxy M14 5G under continuous live teleoperation and 60 FPS rendering for **15 sustained minutes (54,000 VSync-driven frame callbacks)**:
 
 | Metric | Start (0 min) | Midpoint (7.5 min) | Final (15 min) | Trend / Stability |
 | :--- | :---: | :---: | :---: | :--- |
-| **Physical Display FPS** | 60.0 | 60.0 | 60.0 | **Locked 60 FPS (0.0% variance)** |
-| **Presentation Interval**| 16.67 ms | 16.67 ms | 16.67 ms | Strict VSync lock |
+| **VSync Callback Rate** | 60.0 FPS | 60.0 FPS | 60.0 FPS | **Locked 60 Hz callback cadence (0.0% variance)** |
+| **Callback Interval** | 16.67 ms | 16.67 ms | 16.67 ms | Strict VSync-driven callback cadence |
 | **JS Prep Time** | 0.24 ms | 0.25 ms | 0.25 ms | Constant (< 0.5 ms budget) |
 | **Missed VSyncs** | 0 | 0 | 0 | Zero frame drops |
 | **Jank Percentage** | 0.0% | 0.0% | 0.0% | Zero visual hitches |
@@ -172,6 +179,10 @@ Conducted on the physical Samsung Galaxy M14 5G under continuous live teleoperat
 | **Texture VRAM** | 10.6 MB | 10.6 MB | 10.6 MB | Constant (2 PBR textures) |
 | **State Packets Ingested**| 0 | 22,500 | 45,000 | Steady 50.0 Hz stream |
 | **Thermal Downclocking** | None | None | None | SoC remained in nominal thermal zone |
+
+> [!NOTE]
+> **SurfaceFlinger Disclaimer:**
+> SurfaceFlinger presentation timestamps were not independently captured; the endurance metrics record VSync-driven frame callback timing via `android.view.Choreographer.postFrameCallback` in the JavaScript runtime.
 
 ### Architectural Invariants Preserved:
 1. **Zero Heap Accumulation:** State snapshots are processed into pre-allocated typed arrays; no objects are instantiated in the 60 FPS loop.

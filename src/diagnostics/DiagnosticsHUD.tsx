@@ -136,16 +136,16 @@ export const DiagnosticsHUD: React.FC<DiagnosticsHUDProps> = ({
 
           {/* Domain 3: RENDER */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>3. RENDER (PRESENTATION)</Text>
+            <Text style={styles.sectionTitle}>3. RENDER (VSYNC CALLBACK)</Text>
             <View style={styles.grid}>
               <View style={styles.item}>
-                <Text style={styles.label}>DISPLAY FPS</Text>
+                <Text style={styles.label}>CALLBACK RATE</Text>
                 <Text style={[styles.val, { color: fpsColor }]}>
                   {diag.render.displayFps.toFixed(1)} FPS
                 </Text>
               </View>
               <View style={styles.item}>
-                <Text style={styles.label}>INTERVAL</Text>
+                <Text style={styles.label}>CALLBACK INT</Text>
                 <Text style={styles.val}>
                   {diag.render.presentationIntervalMs.toFixed(2)} ms (p95: {diag.render.p95PresentationMs.toFixed(1)})
                 </Text>

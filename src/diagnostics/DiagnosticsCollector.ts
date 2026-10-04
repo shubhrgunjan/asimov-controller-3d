@@ -43,13 +43,13 @@ export interface FullSystemDiagnostics {
     simTimeSec: number;
   };
 
-  // 3. RENDER (Presentation Performance)
+  // 3. RENDER (VSync-Driven Frame Callback Performance; SurfaceFlinger presentation timestamps not independently captured)
   render: {
-    displayFps: number; // Actual presented VSync frames/sec
-    presentationIntervalMs: number; // Mean interval between presented frames
+    displayFps: number; // VSync-driven callback rate (frames/sec)
+    presentationIntervalMs: number; // Mean interval between VSync-driven callbacks (ms)
     p95PresentationMs: number;
     p99PresentationMs: number;
-    jankPercent: number; // Frames exceeding 1.5x VSync interval
+    jankPercent: number; // Callbacks exceeding 1.5x nominal VSync interval
     missedVsyncs: number;
     cpuPrepMs: number; // JS execution & draw submission
     cpuHeadroomMs: number;

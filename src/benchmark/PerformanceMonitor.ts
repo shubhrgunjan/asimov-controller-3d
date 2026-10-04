@@ -21,12 +21,12 @@ export interface SteadyStateSummary {
   sampleCount: number;
   durationSeconds: number;
   
-  // Physical Display Presentation Performance (VSync locked)
+  // VSync-Driven Frame Callback Timing (SurfaceFlinger presentation timestamps not independently captured)
   targetRefreshRateHz: number;
-  averageFps: number; // Actual displayed frames per second (clamped to targetRefreshRateHz)
+  averageFps: number; // VSync-driven frame callback rate (clamped to targetRefreshRateHz)
   minFps: number;
   maxFps: number;
-  averageFrameTimeMs: number; // Presentation interval (target ~16.67 ms at 60 Hz)
+  averageFrameTimeMs: number; // VSync-driven frame callback interval (target ~16.67 ms at 60 Hz)
   medianFrameTimeMs: number;
   p95FrameTimeMs: number;
   p99FrameTimeMs: number;
@@ -218,7 +218,7 @@ export class PerformanceMonitor {
 
     const cpuTimeMs = renderStats.renderCpuTimeMs;
     const gpuWaitMs = Math.max(0, frameDeltaMs - cpuTimeMs);
-    // Presentation FPS can never exceed the hardware display refresh rate
+    // VSync callback rate can never exceed the hardware display refresh rate
     const instantaneousFps = Math.min(this.targetFps, Math.round((1000 / Math.max(1.0, frameDeltaMs)) * 10) / 10);
 
     this.latestMetrics = {

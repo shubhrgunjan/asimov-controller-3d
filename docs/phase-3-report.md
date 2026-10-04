@@ -160,17 +160,20 @@ Every milestone was developed and verified against deterministic automated unit 
 
 Measurements obtained directly on the physical Samsung Galaxy M14 5G (`SM-M146B/DS`, Exynos 1330 / Mali-G68 MP2, Android 14) running Expo Go / Hermes / OpenGL ES 3.2:
 
-- **Measurement Proof:** Measured via `PerformanceMonitor.recordFrame(renderStats)` within `requestAnimationFrame` driven directly by native Android **`android.view.Choreographer.postFrameCallback`** on each hardware VSync pulse.
-- **Display Frame Rate:** **60.0 FPS locked** (presentation interval: **16.67 ms mean**, $p95 = 16.81\text{ ms}$, $p99 = 16.82\text{ ms}$).
-- **Missed VSyncs & Jank:** **0 missed VSyncs (0.0% jank)** over 15 minutes of continuous teleoperation.
+- **Measurement Scope & Technical Limitation:**
+  Timing metrics reflect **VSync-driven frame callback timing** measured inside JavaScript via `PerformanceMonitor.recordFrame()` within `requestAnimationFrame` (driven by native Android `android.view.Choreographer.postFrameCallback`).
+  **SurfaceFlinger presentation timestamps were not independently captured.** Independent hardware scan-out, buffer latch, and compositor presentation timestamps (such as those queried via Android system tracing with Perfetto, `dumpsys SurfaceFlinger --latency`, or the Hardware Composer presentation fence `actual_present_time`) were not queried by the JavaScript runtime. Therefore, these metrics reflect the cadence, execution latency, and interval stability of the VSync-driven Choreographer callbacks in the JS runtime, rather than verified hardware compositor scan-out times.
+- **VSync-Driven Callback Rate:** **60.0 FPS locked** (callback interval: **16.67 ms mean**, $p95 = 16.81\text{ ms}$, $p99 = 16.82\text{ ms}$).
+- **Missed VSyncs & Jank:** **0 missed callbacks (0.0% jank)** over 15 minutes of continuous teleoperation.
 - **CPU Preparation Time:** **0.23–0.51 ms** (includes scene traversal, 25-joint transform math, draw submission).
 - **CPU Headroom:** **> 96.5% idle headroom** (> 16.16 ms available before next VSync boundary).
 - **Memory Stability:** JS Heap bounded at **14.8–15.4 MB**; Texture VRAM flat at **10.6 MB** (zero leaks).
-- **Thermals:** Zero thermal throttling or FPS drop over a 15-minute continuous run.
+- **Thermals:** Zero thermal throttling or callback rate drop over a 15-minute continuous run.
 
 #### Genuine Physical Device Benchmark Run Matrix (Samsung Galaxy M14 5G)
+*(Note: SurfaceFlinger presentation timestamps were not independently captured; table records VSync-driven frame callback timing)*
 
-| # | Workload Configuration | Res | Display FPS | Presented (ms) | P95 Pres (ms) | CPU Prep (ms) | CPU P95 (ms) | CPU Headroom | Jank % | Bottleneck |
+| # | Workload Configuration | Res | Callback FPS | Callback (ms) | P95 Callb (ms) | CPU Prep (ms) | CPU P95 (ms) | CPU Headroom | Jank % | Bottleneck |
 | :-: | :--- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :--- |
 | **1** | Asimov Static (STAND mode, stationary) | 720p | 60.0 | 16.67 | 16.81 | 0.23 | 0.31 | 16.44 ms | 0.0% | `BALANCED_60FPS` |
 | **2** | Asimov Static (STAND mode, stationary) | 1080p | 60.0 | 16.67 | 16.82 | 0.25 | 0.34 | 16.42 ms | 0.0% | `BALANCED_60FPS` |
@@ -236,7 +239,7 @@ End-to-end latency is partitioned into its **four distinct, non-fungible compone
 4. **Render / Presentation Latency ($T_{\text{render}} = 8.58\text{ ms}$):**
    - CPU render preparation: **$0.25\text{ ms}$**.
    - Hardware VSync scan-out phase alignment on 60 Hz display: **$8.33\text{ ms}$** mean ($0.0–16.67\text{ ms}$).
-   - Total Render / Presentation Latency: **$8.58\text{ ms}$**.
+   - Total Render / Presentation Latency: **$8.58\text{ ms}$**. *(Note: Evaluated via JS render prep and estimated 60 Hz VSync phase alignment; SurfaceFlinger presentation timestamps were not independently captured).*
 
 **Total Observed Control-to-Display Latency:**
 $$T_{\text{total}} = 3.20\text{ ms} + 10.00\text{ ms} + 3.20\text{ ms} + 40.00\text{ ms} + 8.58\text{ ms} = \mathbf{64.98\text{ ms}} \approx \mathbf{65\text{ ms}} \quad (\mathbf{\approx 3.9 \text{ VSync frames at } 60\text{ Hz}})$$
@@ -248,7 +251,7 @@ $$T_{\text{total}} = 3.20\text{ ms} + 10.00\text{ ms} + 3.20\text{ ms} + 40.00\t
 Per Non-Negotiable Engineering Rules, all features and values are explicitly categorized:
 
 ### A. IMPLEMENTED & VERIFIED ON PHYSICAL DEVICE
-- **Three.js Native EGL Rendering:** Running on Samsung Galaxy M14 5G PLS LCD via `expo-gl` / OpenGL ES 3.2 at locked 60 FPS presentation interval (16.67 ms).
+- **Three.js Native EGL Rendering:** Running on Samsung Galaxy M14 5G PLS LCD via `expo-gl` / OpenGL ES 3.2 at locked 60 Hz VSync-driven frame callback cadence (16.67 ms nominal interval).
 - **Asimov 1 Visual Model:** Full 113,436 triangle GLB model with 26 draw calls rendered natively.
 - **Dual Touch Joysticks:** Virtual PanResponder joysticks mapping normalized touch gestures to asymmetric velocity commands.
 - **Camera System:** Real-time local switching between Third Person, FPV, Front Inspection, and Orbit without render interruptions.
@@ -262,8 +265,8 @@ Per Non-Negotiable Engineering Rules, all features and values are explicitly cat
 - **Failure & Safety Handling:** Disconnect command suppression, packet loss mitigation without visual rewinds, starvation extrapolation clamp, and compliant E-Stop dispatch.
 
 ### C. MEASURED VALUES
-- **Display Frame Rate:** `60.0 FPS` (clamped to hardware display refresh cadence).
-- **Display Presentation Interval:** `16.67 ms` mean, `16.81 ms` p95, `16.82 ms` p99.
+- **VSync-Driven Frame Callback Rate:** `60.0 FPS` (Choreographer frame callback rate).
+- **VSync-Driven Callback Interval:** `16.67 ms` mean, `16.81 ms` p95, `16.82 ms` p99 (SurfaceFlinger presentation timestamps not independently captured).
 - **CPU Preparation Time:** `0.23–0.51 ms` (includes scene traversal, joint updates, and draw submission).
 - **State Processing Time:** `0.18–0.27 ms`.
 - **Command Latency ($T_0 \to T_1$):** `0.04 ms`.
@@ -287,4 +290,4 @@ Phase 3 achieves all non-negotiable architectural objectives:
 - **Network state packets do not drive rendering.**
 - **High-frequency state uses a compact 288-byte binary protocol.**
 - **No fake telemetry is displayed or recorded.**
-- **60 FPS presentation performance is fully preserved on the physical Samsung Galaxy M14 5G.**
+- **60 Hz VSync-driven frame callback cadence and stability are fully preserved on the physical Samsung Galaxy M14 5G.**

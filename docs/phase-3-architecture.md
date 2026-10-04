@@ -78,9 +78,9 @@ The non-negotiable architectural requirement is:
 | **Asimov 1 GLB Asset** | `assets/asimov_1.glb`, `src/model/asimov_1_model_data.ts` | `VERIFIED` | Validated mobile-optimized asset (113,436 triangles, 26 links, 25 revolute joints). |
 | **Joint Hierarchy & Limits** | `src/model/AsimovJointHierarchy.ts` | `VERIFIED` | Exact 25-joint definitions, axis directions, ranges, default quaternions, parent-child links. |
 | **Robot Model Manager** | `src/model/AsimovRobotModel.ts` | `VERIFIED` | Three.js group loading, axis-angle rotation, hardware limit clamping, MuJoCo $\to$ Three.js coordinate mapping. |
-| **Three.js Renderer** | `src/renderer/ThreeRenderer.ts` | `VERIFIED` | Decoupled render loop, presentation timing instrumentation, VSync monitoring. |
+| **Three.js Renderer** | `src/renderer/ThreeRenderer.ts` | `VERIFIED` | Decoupled render loop, VSync-driven frame callback timing instrumentation, Choreographer monitoring. |
 | **Scene & Camera Manager** | `src/renderer/SceneManager.ts` | `VERIFIED` | Cameras: `third_person`, `first_person`, `front_inspection`, `orbit`. PBR lighting & shadows. |
-| **Performance Monitor** | `src/benchmark/PerformanceMonitor.ts` | `VERIFIED` | Separated domains: Presentation Performance (VSync interval, FPS, jank) vs CPU Prep Time. |
+| **Performance Monitor** | `src/benchmark/PerformanceMonitor.ts` | `VERIFIED` | Separated domains: VSync-Driven Callback Timing (callback rate, interval, jank) vs CPU Prep Time *(SurfaceFlinger presentation timestamps not independently captured)*. |
 | **Test Suites** | `tests/*.test.ts` | `VERIFIED` | Model validation, benchmark suites, matrix runners (all passing). |
 
 ---
@@ -90,7 +90,7 @@ The non-negotiable architectural requirement is:
 ### 3.1 What Can Be Reused Without Modification
 1. **Robot Visual Asset (`assets/asimov_1.glb`)**: Fully preserved. No GLB modifications in Phase 3.
 2. **Kinematic Hierarchy (`AsimovJointHierarchy.ts`)**: 25 joint definitions, rotation axes, and ranges directly map to VASIMOV's `SIM_JOINTS`.
-3. **Three.js Presentation Pipeline (`ThreeRenderer.ts`, `SceneManager.ts`)**: Proven stable 60 FPS presentation on Samsung Galaxy M14 5G.
+3. **Three.js Presentation Pipeline (`ThreeRenderer.ts`, `SceneManager.ts`)**: Proven stable 60 Hz VSync-driven frame callback cadence on Samsung Galaxy M14 5G.
 4. **VASIMOV Control Lifecycle (`control_handler.py`)**: Proven lifecycle: `USER INPUT -> PARSED -> VALIDATED -> ACCEPTED/REJECTED -> APPLIED -> SIMULATOR RESULT`.
 5. **VASIMOV Locomotion Policy & Recovery**: Official Menlo locomotion policy + OpenHorizon Safe-Fall/Get-Up recovery chain.
 
@@ -110,13 +110,13 @@ The non-negotiable architectural requirement is:
 7. **P3.7 Camera System Integration**:
    - Camera switching between `third_person`, `first_person`, `front_inspection`, and `orbit` anchored to the live simulated robot pelvis/head.
 8. **P3.8 Diagnostics HUD (`src/diagnostics/DiagnosticsHUD.tsx`)**:
-   - Low-frequency developer HUD overlay showing real connection stats (RTT, packet rate, loss), simulation stats (sim Hz, policy Hz, mode), render metrics (presentation FPS, intervals, jank), and synchronization metrics (state age, buffer depth).
+   - Low-frequency developer HUD overlay showing real connection stats (RTT, packet rate, loss), simulation stats (sim Hz, policy Hz, mode), render metrics (callback rate, intervals, jank), and synchronization metrics (state age, buffer depth).
 9. **P3.9 Failure & Safety Handling**:
    - Clean handling of network drops, packet loss recovery without rewinds, clean state reinitialization on reconnect, and backend watchdog E-stop integration.
 
 ### 3.3 What Must Be Replaced
 - **High-Frequency JSON Streaming**: The legacy controller parsed ~20 KB JSON strings in React component state at 25 Hz. This caused heavy JS garbage collection, frame drops, and thread starvation. **Replaced by:** Compact 256-byte binary ArrayBuffer parsed outside React state in a dedicated non-React data structure.
-- **Render Coupled to Network Arrival**: The pattern `packet arrives -> render frame` is strictly prohibited. **Replaced by:** Network packets enter `StateBuffer`; independent 60 FPS Three.js render loop samples interpolated state at presentation intervals.
+- **Render Coupled to Network Arrival**: The pattern `packet arrives -> render frame` is strictly prohibited. **Replaced by:** Network packets enter `StateBuffer`; independent 60 FPS Three.js render loop samples interpolated state at VSync-driven callback intervals.
 
 ### 3.4 What Must Not Be Duplicated
 - **No Client Physics**: The Android client must not calculate forward/inverse dynamics, ground reaction forces, balance control, or foot collision resolution.
@@ -150,7 +150,7 @@ The non-negotiable architectural requirement is:
 | **P3.7** | Local 4-preset camera system (Third-person, FPV, Front inspection, Orbit). | Camera switching verification without render hitching or transform divergence. |
 | **P3.8** | Diagnostics HUD with empirical connection, simulation, sync, and render metrics. | Verified zero fake metrics; diagnostics overhead < 0.1 ms JS prep time. |
 | **P3.9** | Failure and safety handling (connection loss, packet loss recovery, E-stop). | Robustness tests simulating abrupt server crash, packet burst drops, and reconnect. |
-| **P3.10** | Full-system validation on physical Samsung Galaxy M14 5G hardware. | 10–15 min sustained run measuring 60 FPS presentation, RTT, thermals, and memory. |
+| **P3.10** | Full-system validation on physical Samsung Galaxy M14 5G hardware. | 10–15 min sustained run measuring 60 Hz VSync callback cadence, RTT, thermals, and memory *(SurfaceFlinger presentation timestamps not independently captured)*. |
 
 ---
 
@@ -161,6 +161,6 @@ Phase 3 is complete only when:
 2. Simulated robot pose (6-DoF base + 25 joints) updates live on the phone at 60 FPS.
 3. Touch controls command velocity and state transitions entering the official locomotion/recovery policies.
 4. Camera presets switch seamlessly without interrupting rendering.
-5. Real diagnostics display empirical presentation FPS, VSync intervals, RTT, and packet loss.
+5. Real diagnostics display empirical VSync-driven callback rate, callback intervals, RTT, and packet loss.
 6. The system survives network jitter, packet drops, and reconnects safely.
-7. Physical device validation on Samsung Galaxy M14 5G confirms 60 FPS with no thermal collapse.
+7. Physical device validation on Samsung Galaxy M14 5G confirms locked 60 Hz VSync-driven callback cadence with no thermal collapse.

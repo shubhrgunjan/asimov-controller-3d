@@ -29,12 +29,12 @@ To eliminate this ambiguity, the benchmark architecture has been rebuilt around 
    - Kinematic hierarchy and matrix updates
    - Three.js scene traversal and draw call submission
    - CPU headroom remaining within the frame budget
-2. **Actual Presentation Performance (Physical Display):**
-   - Actual displayed frames per second (strictly clamped to hardware refresh rate)
-   - Actual presentation frame interval (ms between hardware presentation boundaries)
-   - Missed VSyncs (presentation intervals exceeding $1.45 \times \text{nominal budget}$)
+2. **VSync-Driven Frame Callback Timing (Choreographer Cadence):**
+   - VSync-driven frame callback rate (strictly clamped to hardware refresh rate)
+   - Frame callback interval (ms between VSync-driven callbacks in JavaScript)
+   - Missed VSyncs (callback intervals exceeding $1.45 \times \text{nominal budget}$)
    - Jank percentage (proportion of frames missing display deadline)
-   - $p95$ and $p99$ presentation interval distribution
+   - $p95$ and $p99$ callback interval distribution
 
 ---
 
@@ -57,8 +57,10 @@ The benchmark was audited and targeted to the developer's physical Android hardw
 | **Runtime Engine** | React Native `0.86.3` / Hermes Bytecode Engine / `expo-gl` | Native Android `EGLSurface` / `TextureView` |
 
 > [!IMPORTANT]
-> **Separation of Results:**
-> The measurements presented below are strictly categorized. Physical device measurements reflect the Samsung Galaxy M14 5G running native OpenGL ES surfaces via Expo Go. Emulator and headless Node.js tests are isolated and clearly labeled.
+> **Measurement Scope & SurfaceFlinger Disclaimer:**
+> The measurements reported below reflect **VSync-driven frame callback timing** measured inside the JavaScript runtime via `android.view.Choreographer.postFrameCallback`.
+> **SurfaceFlinger presentation timestamps were not independently captured.**
+> Independent hardware scan-out, buffer latch, and compositor presentation timestamps (such as those queried via Android system tracing with Perfetto, `dumpsys SurfaceFlinger --latency`, or the Hardware Composer presentation fence `actual_present_time`) were not queried by the JavaScript runtime. Therefore, these metrics capture the cadence and stability of the VSync-driven Choreographer callbacks in the JS runtime, rather than verified hardware compositor scan-out times.
 
 ---
 
