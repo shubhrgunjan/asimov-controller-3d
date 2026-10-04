@@ -9,10 +9,13 @@
     "web": "expo start --web",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "setup:network": "./scripts/setup-network.sh",
+    "reverse": "./scripts/setup-network.sh"
   },
   "dependencies": {
     "expo": "~57.0.26",
+    "expo-constants": "~57.0.20",
     "expo-gl": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",

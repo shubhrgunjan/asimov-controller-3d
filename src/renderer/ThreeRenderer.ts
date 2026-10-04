@@ -58,6 +58,23 @@ export class ThreeRenderer {
       getContext: () => gl,
     } as unknown as HTMLCanvasElement;
 
+    // In Three.js r163+, THREE.WebGLRenderer checks:
+    // `if (typeof WebGLRenderingContext !== 'undefined' && context instanceof WebGLRenderingContext)`
+    // and throws "WebGL 1 is not supported since r163".
+    // In expo-gl, WebGL2RenderingContext inherits from WebGLRenderingContext, which erroneously
+    // triggers this WebGL 1 rejection. We override Symbol.hasInstance on WebGLRenderingContext
+    // so Three.js properly treats Expo's OpenGL ES 3.0 / WebGL2 context as WebGL2.
+    if (typeof WebGLRenderingContext !== 'undefined') {
+      try {
+        Object.defineProperty(WebGLRenderingContext, Symbol.hasInstance, {
+          value: () => false,
+          configurable: true,
+        });
+      } catch {
+        // Fallback for environments with locked intrinsics
+      }
+    }
+
     this.renderer = new THREE.WebGLRenderer({
       canvas: mockCanvas,
       context: gl as unknown as WebGLRenderingContext,

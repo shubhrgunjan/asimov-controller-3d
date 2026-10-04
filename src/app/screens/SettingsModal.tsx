@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { AppConfig, AppSettingsManager } from '../../settings/AppSettings';
 import { ResolutionMode } from '../../renderer/ThreeRenderer';
+import { getExpoHostAddress } from '../../utils/NetworkDiscovery';
 
 export interface SettingsModalProps {
   settings: AppSettingsManager;
@@ -100,12 +101,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onClose 
             <Text style={styles.sectionHeader}>CONNECTION TARGET</Text>
 
             <View style={styles.fieldRow}>
-              <Text style={styles.label}>Backend Host IP</Text>
+              <View>
+                <Text style={styles.label}>Backend Host IP</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const detected = getExpoHostAddress();
+                    if (detected) setHost(detected);
+                  }}
+                >
+                  <Text style={{ color: '#38bdf8', fontSize: 10, fontFamily: 'monospace' }}>
+                    ⚡ Auto-Detect IP
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
                 style={styles.input}
                 value={host}
                 onChangeText={setHost}
-                placeholder="10.222.5.132"
+                placeholder="192.168.x.x / 127.0.0.1"
                 placeholderTextColor="#475569"
                 autoCapitalize="none"
               />

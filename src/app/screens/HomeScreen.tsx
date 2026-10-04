@@ -6,7 +6,7 @@
  * robot telemetry status, and quick access to live teleoperation.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -14,8 +14,10 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { GlobalConnectionState } from '../navigation/AppStateMachine';
+import { getExpoHostAddress, discoverBackendTargets } from '../../utils/NetworkDiscovery';
 
 export interface HomeScreenProps {
   connectionState: GlobalConnectionState;
@@ -40,9 +42,46 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOpenSettings,
   onOpenBenchmark,
 }) => {
-  const [host, setHost] = useState(initialHost);
+  const detectedExpoHost = getExpoHostAddress();
+  const [host, setHost] = useState(initialHost || detectedExpoHost || '127.0.0.1');
   const [port, setPort] = useState(String(initialPort));
   const [isEditingCustom, setIsEditingCustom] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [discoveredTarget, setDiscoveredTarget] = useState<string | null>(null);
+
+  // Auto-scan candidates on mount when disconnected
+  useEffect(() => {
+    let isMounted = true;
+    if (connectionState === 'DISCONNECTED') {
+      setIsScanning(true);
+      discoverBackendTargets(host).then(({ activeTarget }) => {
+        if (!isMounted) return;
+        setIsScanning(false);
+        if (activeTarget) {
+          setDiscoveredTarget(activeTarget.host);
+          setHost(activeTarget.host);
+        }
+      }).catch(() => {
+        if (isMounted) setIsScanning(false);
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleManualScan = async () => {
+    setIsScanning(true);
+    try {
+      const { activeTarget } = await discoverBackendTargets(host);
+      if (activeTarget) {
+        setDiscoveredTarget(activeTarget.host);
+        setHost(activeTarget.host);
+      }
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const isConnected = connectionState === 'CONNECTED';
   const isConnecting = connectionState === 'CONNECTING' || connectionState === 'RECONNECTING';
@@ -111,16 +150,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             {/* Target Presets */}
             <View style={styles.presetRow}>
-              <TouchableOpacity
-                style={[
-                  styles.presetPill,
-                  host === '10.222.5.132' && !isEditingCustom && styles.presetPillActive,
-                ]}
-                onPress={() => handleSelectPreset('10.222.5.132', 8854)}
-                disabled={isConnecting}
-              >
-                <Text style={styles.presetText}>LAN (10.222.5.132)</Text>
-              </TouchableOpacity>
+              {detectedExpoHost && (
+                <TouchableOpacity
+                  style={[
+                    styles.presetPill,
+                    host === detectedExpoHost && !isEditingCustom && styles.presetPillActive,
+                  ]}
+                  onPress={() => handleSelectPreset(detectedExpoHost, 8854)}
+                  disabled={isConnecting}
+                >
+                  <Text style={styles.presetText}>{`Wi-Fi (${detectedExpoHost})`}</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={[
@@ -130,7 +171,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onPress={() => handleSelectPreset('127.0.0.1', 8854)}
                 disabled={isConnecting}
               >
-                <Text style={styles.presetText}>Localhost</Text>
+                <Text style={styles.presetText}>USB / ADB (127.0.0.1)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.presetPill, styles.presetPillScan]}
+                onPress={handleManualScan}
+                disabled={isConnecting || isScanning}
+              >
+                {isScanning ? (
+                  <ActivityIndicator size="small" color="#38bdf8" />
+                ) : (
+                  <Text style={styles.presetTextScan}>⚡ Auto-Scan</Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -141,6 +194,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Text style={styles.presetText}>Custom</Text>
               </TouchableOpacity>
             </View>
+
+            {discoveredTarget && (
+              <Text style={styles.discoveredBanner}>
+                {`✓ Active VASIMOV Server Verified at ${discoveredTarget}`}
+              </Text>
+            )}
 
             {/* Custom Host/Port Input Form */}
             {isEditingCustom && (
@@ -360,10 +419,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#0284c7',
     borderColor: '#38bdf8',
   },
+  presetPillScan: {
+    backgroundColor: 'rgba(2, 132, 199, 0.20)',
+    borderColor: '#38bdf8',
+  },
   presetText: {
     color: '#e2e8f0',
     fontSize: 11,
     fontWeight: '600',
+  },
+  presetTextScan: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  discoveredBanner: {
+    marginTop: 8,
+    color: '#10b981',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
   },
   customInputContainer: {
     flexDirection: 'row',

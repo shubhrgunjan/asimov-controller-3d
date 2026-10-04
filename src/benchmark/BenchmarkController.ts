@@ -6,6 +6,7 @@ import { PerformanceMonitor, SteadyStateSummary, MonitorPhase } from './Performa
 import { AssetLoader, AssetTestResult } from '../renderer/AssetLoader';
 import { ValidationPoseName } from '../model/AsimovRobotModel';
 import { TeleopSessionManager } from '../app/TeleopSessionManager';
+import { appSettings } from '../settings/AppSettings';
 
 export type BottleneckDiagnosis =
   | 'BALANCED_60FPS'
@@ -77,9 +78,10 @@ export class BenchmarkController {
     this.scene = new BenchmarkScene(this.sceneManager);
     this.monitor = new PerformanceMonitor(60);
     this.assetLoader = new AssetLoader();
+    const conn = appSettings.getConfig().connection;
     this.teleopSession = new TeleopSessionManager(this.scene.robotModel, this.monitor, {
-      host: '10.222.5.132',
-      port: 8854,
+      host: conn.host,
+      port: conn.port,
       autoConnect: false,
     });
   }

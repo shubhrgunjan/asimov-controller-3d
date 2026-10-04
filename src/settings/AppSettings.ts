@@ -44,7 +44,7 @@ export interface AppConfig {
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   connection: {
-    host: '10.222.5.132',
+    host: '127.0.0.1',
     port: 8854,
     autoReconnect: true,
     reconnectIntervalMs: 1500,

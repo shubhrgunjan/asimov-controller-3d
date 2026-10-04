@@ -48,7 +48,7 @@ export class TeleopSessionManager {
     });
 
     // 2. Initialize State Transport Client
-    const host = options.host || '10.222.5.132';
+    const host = options.host || '127.0.0.1';
     const port = options.port || 8854;
     this.client = new StateTransportClient({
       host,
