@@ -10,7 +10,7 @@
 
 ## 1. Design Objectives
 
-1. **Deterministic Size & Alignment**: Fixed 288-byte state packet and 28-byte command packet. All fields are aligned on 2-byte, 4-byte, or 8-byte boundaries.
+1. **Deterministic Size & Alignment**: Fixed 288-byte state packet (`VAS1`) and 32-byte command packet (`VAC1`). All fields are aligned on 2-byte, 4-byte, or 8-byte boundaries.
 2. **Zero Allocation Parsing**: Deserialization on Android uses a single `DataView` or direct `Float32Array` sub-array views over the received `ArrayBuffer`, avoiding runtime heap allocations and garbage collection pauses.
 3. **Loss & Jitter Resilience**: Explicit monotonic `sequence_number` and 64-bit `timestamp` allow the client state buffer to detect dropped, duplicated, or out-of-order packets.
 4. **Authoritative Single-Source Mapping**: Joint order strictly follows `SIM_JOINTS` (0..24) from VASIMOV `adapter.py` and `AsimovJointHierarchy.ts`.
