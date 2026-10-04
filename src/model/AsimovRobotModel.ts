@@ -436,23 +436,26 @@ export class AsimovRobotModel {
   /**
    * Get world position of Head for First-Person Camera (Section 17)
    */
-  public getHeadWorldPosition(target: THREE.Vector3): void {
+  public getHeadWorldPosition(target: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
     if (this.headNode) {
       this.headNode.getWorldPosition(target);
     } else {
-      target.set(0, 1.15, 0);
+      target.copy(this.rootGroup.position);
+      target.y += 1.15;
     }
+    return target;
   }
 
   /**
    * Get world position of Pelvis for Chase Camera (Section 17)
    */
-  public getPelvisWorldPosition(target: THREE.Vector3): void {
+  public getPelvisWorldPosition(target: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
     if (this.pelvisNode) {
       this.pelvisNode.getWorldPosition(target);
     } else {
-      target.set(0, 0.63, 0);
+      target.copy(this.rootGroup.position);
     }
+    return target;
   }
 
   private measurePhysicalDimensions(): void {
