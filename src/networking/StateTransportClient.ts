@@ -17,7 +17,13 @@ import {
   PROTOCOL_VERSION,
 } from '../protocol/AsimovStateProtocol';
 
-export type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING';
+export type ConnectionState =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'DEGRADED'
+  | 'RECONNECTING'
+  | 'FAILED';
 
 export interface NetworkMetrics {
   connectionState: ConnectionState;
@@ -41,6 +47,7 @@ export interface StateTransportClientOptions {
   port?: number;
   autoReconnect?: boolean;
   reconnectIntervalMs?: number;
+  maxReconnectAttempts?: number;
   onStateReceived?: (state: AsimovRobotState) => void;
   onConnectionChange?: (state: ConnectionState) => void;
 }
@@ -50,6 +57,8 @@ export class StateTransportClient {
   private port: number;
   private autoReconnect: boolean;
   private reconnectIntervalMs: number;
+  private maxReconnectAttempts: number;
+  private consecutiveFailures: number = 0;
 
   private ws: WebSocket | null = null;
   private connectionState: ConnectionState = 'DISCONNECTED';
@@ -91,6 +100,7 @@ export class StateTransportClient {
     this.port = options.port || 8854;
     this.autoReconnect = options.autoReconnect ?? true;
     this.reconnectIntervalMs = options.reconnectIntervalMs || 1500;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
     this.onStateReceived = options.onStateReceived || null;
     this.onConnectionChange = options.onConnectionChange || null;
 
@@ -154,6 +164,8 @@ export class StateTransportClient {
       this.reconnectTimer = null;
     }
 
+    this.consecutiveFailures = 0;
+
     if (this.ws) {
       // Remove handlers before closing
       this.ws.onopen = null;
@@ -177,6 +189,7 @@ export class StateTransportClient {
   }
 
   private handleOpen(): void {
+    this.consecutiveFailures = 0;
     this.setConnectionState('CONNECTED');
     this.expectedSequence = 0;
     this.metrics.lastSequenceNumber = 0;
@@ -271,6 +284,13 @@ export class StateTransportClient {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.isDestroyed) return;
+
+    if (this.consecutiveFailures >= this.maxReconnectAttempts) {
+      this.setConnectionState('FAILED');
+      return;
+    }
+
+    this.consecutiveFailures++;
     this.metrics.reconnectCount++;
     this.setConnectionState('RECONNECTING');
 
@@ -303,6 +323,17 @@ export class StateTransportClient {
       this.metrics.packetLossPercent =
         Math.round((this.metrics.packetsDropped / totalExpected) * 1000) / 10;
     }
+
+    // Packet rate degradation detection
+    if (this.connectionState === 'CONNECTED' && this.metrics.packetRateHz < 20 && this.metrics.packetsReceived > 20) {
+      this.setConnectionState('DEGRADED');
+    } else if (this.connectionState === 'DEGRADED' && this.metrics.packetRateHz >= 40) {
+      this.setConnectionState('CONNECTED');
+    }
+  }
+
+  public resetReconnectCount(): void {
+    this.metrics.reconnectCount = 0;
   }
 
   /**

@@ -322,4 +322,12 @@ export class StateBuffer {
   public getNewestSequence(): number {
     return this.lastSequenceNumber;
   }
+
+  public setInterpolationDelay(delayMs: number): void {
+    this.interpolationDelaySec = Math.max(0.005, delayMs / 1000.0);
+  }
+
+  public getInterpolationDelayMs(): number {
+    return this.interpolationDelaySec * 1000.0;
+  }
 }

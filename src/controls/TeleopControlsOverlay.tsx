@@ -242,7 +242,7 @@ export const TeleopControlsOverlay: React.FC<TeleopControlsOverlayProps> = ({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
   },
   topBar: {

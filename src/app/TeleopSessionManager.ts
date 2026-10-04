@@ -60,6 +60,13 @@ export class TeleopSessionManager {
           // Flush stale pre-disconnect snapshots upon fresh handshake
           this.buffer.reset();
         }
+        for (const listener of this.connectionListeners) {
+          try {
+            listener(state);
+          } catch (err) {
+            console.error('[TeleopSessionManager] Listener error:', err);
+          }
+        }
       },
     });
 
@@ -69,10 +76,29 @@ export class TeleopSessionManager {
     // 4. Initialize Diagnostics Collector
     this.diagnostics = new DiagnosticsCollector(this.client, this.buffer, monitor);
 
-    // Auto-connect if requested
-    if (options.autoConnect !== false) {
+    // Auto-connect if requested (default to false in Phase 4 for operator explicit connection)
+    if (options.autoConnect === true) {
       this.client.connect();
     }
+  }
+
+  private connectionListeners: Set<(state: ConnectionState) => void> = new Set();
+
+  public addConnectionListener(listener: (state: ConnectionState) => void): () => void {
+    this.connectionListeners.add(listener);
+    // Immediately emit current state
+    listener(this.client.getMetrics().connectionState);
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
+  public getConnectionState(): ConnectionState {
+    return this.client.getMetrics().connectionState;
+  }
+
+  public setInterpolationDelay(delayMs: number): void {
+    this.buffer.setInterpolationDelay(delayMs);
   }
 
   public setRobotModel(robotModel: AsimovRobotModel): void {
@@ -116,6 +142,7 @@ export class TeleopSessionManager {
   }
 
   public dispose(): void {
+    this.connectionListeners.clear();
     this.client.destroy();
     this.buffer.reset();
   }
