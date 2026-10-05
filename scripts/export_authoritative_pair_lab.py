@@ -246,7 +246,7 @@ def main():
     assets_dir = os.path.join(project_root, "assets")
     os.makedirs(assets_dir, exist_ok=True)
 
-    out_glb_path = os.path.join(assets_dir, "PAIR_Lab.glb")
+    out_glb_path = os.path.join(assets_dir, "pair_lab.glb")
     out_meta_path = os.path.join(assets_dir, "pair_lab_blender_metadata.json")
 
     print(f"\n[3/4] Exporting full scene to glTF 2.0 binary ({out_glb_path})...")

@@ -59,9 +59,9 @@ let isWireframe = false;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 
-// 4. Load PAIR_Lab.glb directly via GLTFLoader
+// 4. Load pair_lab.glb directly via GLTFLoader
 const loader = new GLTFLoader();
-const glbUrl = '../../assets/PAIR_Lab.glb';
+const glbUrl = '../../assets/pair_lab.glb';
 
 loader.load(
   glbUrl,
@@ -130,8 +130,8 @@ loader.load(
     }
   },
   (err) => {
-    console.error('Failed to load PAIR_Lab.glb:', err);
-    loadingSub.textContent = `Error: ${err.message || 'File not found. Please export PAIR_Lab.glb first.'}`;
+    console.error('Failed to load pair_lab.glb:', err);
+    loadingSub.textContent = `Error: ${err.message || 'File not found. Please export pair_lab.glb first.'}`;
     loadingSub.style.color = '#ef4444';
   }
 );

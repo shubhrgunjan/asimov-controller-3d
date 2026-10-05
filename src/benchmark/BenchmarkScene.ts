@@ -848,8 +848,7 @@ export class BenchmarkScene {
         const fs = require('fs');
         const path = require('path');
         const candidate = glbPathOrUrl || path.resolve(__dirname, '../../assets/pair_lab.glb');
-        const fallbackCandidate = path.resolve(__dirname, '../../assets/PAIR_Lab.glb');
-        const targetFile = fs.existsSync(candidate) ? candidate : fs.existsSync(fallbackCandidate) ? fallbackCandidate : null;
+        const targetFile = fs.existsSync(candidate) ? candidate : null;
         if (targetFile) {
           const buf = fs.readFileSync(targetFile);
           const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
