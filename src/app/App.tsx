@@ -64,9 +64,9 @@ export default function App() {
 
       const bController = new BenchmarkController(renderer);
 
-      // Default to live teleoperation mode for Phase 4
+      // Default to live teleoperation mode with full canonical MuJoCo environment
       bController.setAppMode('TELEOP');
-      bController.scene.loadLevel('ASIMOV_ARTICULATED');
+      bController.scene.loadLevel('ASIMOV_ENVIRONMENT');
       bController.sceneManager.setCameraMode(config.rendering.defaultCameraMode);
       bController.teleopSession.setInterpolationDelay(config.synchronization.interpolationDelayMs);
 
@@ -161,6 +161,11 @@ export default function App() {
           host={appConfig.connection.host}
           port={appConfig.connection.port}
           onCancel={handleCancelConnection}
+          onRetry={() => {
+            if (controllerRef.current) {
+              controllerRef.current.teleopSession.connect();
+            }
+          }}
         />
       )}
 
@@ -179,6 +184,7 @@ export default function App() {
           {/* Full Interactive Teleoperation Controls & Status Overlay */}
           <TeleopControlsOverlay
             controller={controller.teleopSession.teleop}
+            teleopSession={controller.teleopSession}
             currentCamera={currentCamera}
             onSelectCamera={(mode) => controller.sceneManager.setCameraMode(mode, undefined, undefined, true)}
             connectionState={connectionState}
@@ -191,6 +197,9 @@ export default function App() {
             onDisconnect={handleDisconnect}
             onOpenSettings={() => stateMachineRef.current.navigate('SETTINGS')}
             onExitToHome={() => stateMachineRef.current.navigate('HOME')}
+            showDevHud={appConfig.diagnostics.showDevHud}
+            onToggleDevHud={() => appSettings.updateDiagnostics({ showDevHud: !appConfig.diagnostics.showDevHud })}
+            onOrbitCamera={(deltaAz, deltaEl) => controller.sceneManager.addOrbitOffset(deltaAz, deltaEl)}
           />
         </>
       )}

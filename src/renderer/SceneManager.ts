@@ -30,6 +30,7 @@ export class SceneManager {
   public readonly worldGroup: THREE.Group;
   public readonly lightingGroup: THREE.Group;
   public readonly objectsGroup: THREE.Group;
+  public readonly robotGroup: THREE.Group;
 
   // Lights
   private ambientLight: THREE.AmbientLight;
@@ -43,6 +44,22 @@ export class SceneManager {
   private cameraRadius: number = 6.0;
   private cameraHeight: number = 3.2;
   private cameraOrbitSpeed: number = 0.35; // radians per second
+
+  // GTA-style interactive orbit tracking
+  public orbitAzimuth: number = 0.0;
+  public orbitElevation: number = 0.22;
+  public orbitDistance: number = 2.4;
+
+  public addOrbitOffset(deltaAzimuth: number, deltaElevation: number): void {
+    this.orbitAzimuth += deltaAzimuth;
+    this.orbitElevation = Math.max(-0.35, Math.min(1.15, this.orbitElevation + deltaElevation));
+  }
+
+  public resetOrbitOffset(): void {
+    this.orbitAzimuth = 0.0;
+    this.orbitElevation = 0.22;
+    this.orbitDistance = 2.4;
+  }
 
   constructor(aspectRatio: number = 16 / 9) {
     this.scene = new THREE.Scene();
@@ -66,39 +83,54 @@ export class SceneManager {
     this.objectsGroup.name = 'Objects';
     this.scene.add(this.objectsGroup);
 
-    // 3. Initialize Lighting System
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    // Dedicated Robot Group that is NEVER disposed by scene clearing
+    this.robotGroup = new THREE.Group();
+    this.robotGroup.name = 'Robot_Authoritative';
+    this.scene.add(this.robotGroup);
+
+    // 3. Initialize High-Fidelity Indoor Lighting System
+    // Natural hemisphere fill light (sky white + ground slate) eliminates pitch-black shadows everywhere
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x64748b, 1.4);
+    hemiLight.position.set(0, 10, 0);
+    this.lightingGroup.add(hemiLight);
+
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     this.lightingGroup.add(this.ambientLight);
 
-    // Primary Key Sun Light with real-time shadow map
-    this.keyDirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    this.keyDirectionalLight.position.set(5, 10, 7);
+    // Overhead Key Ceiling Sun Light with real-time shadow map
+    this.keyDirectionalLight = new THREE.DirectionalLight(0xfff7ed, 1.6);
+    this.keyDirectionalLight.position.set(0, 7.5, 2);
     this.keyDirectionalLight.castShadow = true;
     this.keyDirectionalLight.shadow.mapSize.width = 1024;
     this.keyDirectionalLight.shadow.mapSize.height = 1024;
     this.keyDirectionalLight.shadow.camera.near = 0.5;
     this.keyDirectionalLight.shadow.camera.far = 30;
-    this.keyDirectionalLight.shadow.camera.left = -8;
-    this.keyDirectionalLight.shadow.camera.right = 8;
-    this.keyDirectionalLight.shadow.camera.top = 8;
-    this.keyDirectionalLight.shadow.camera.bottom = -8;
+    this.keyDirectionalLight.shadow.camera.left = -10;
+    this.keyDirectionalLight.shadow.camera.right = 10;
+    this.keyDirectionalLight.shadow.camera.top = 10;
+    this.keyDirectionalLight.shadow.camera.bottom = -10;
     this.keyDirectionalLight.shadow.bias = -0.0005;
     this.lightingGroup.add(this.keyDirectionalLight);
 
-    // Secondary Fill Light (diffuse cold rim)
-    this.fillDirectionalLight = new THREE.DirectionalLight(0x88bbff, 0.4);
-    this.fillDirectionalLight.position.set(-6, 4, -5);
+    // Secondary Frontal Fill Light (illuminates front face of robot and furniture)
+    this.fillDirectionalLight = new THREE.DirectionalLight(0xe0f2fe, 1.2);
+    this.fillDirectionalLight.position.set(0, 4, 8);
     this.fillDirectionalLight.castShadow = false;
     this.lightingGroup.add(this.fillDirectionalLight);
 
+    // Additional Back Light (for depth separation)
+    const backLight = new THREE.DirectionalLight(0xf1f5f9, 0.8);
+    backLight.position.set(0, 4, -8);
+    this.lightingGroup.add(backLight);
+
     // Dynamic point lights for local illumination
-    const p1 = new THREE.PointLight(0x38bdf8, 0.8, 10);
-    p1.position.set(3, 2, 3);
+    const p1 = new THREE.PointLight(0x38bdf8, 1.2, 12);
+    p1.position.set(2, 3, 2);
     this.pointLights.push(p1);
     this.lightingGroup.add(p1);
 
-    const p2 = new THREE.PointLight(0xf43f5e, 0.8, 10);
-    p2.position.set(-3, 2, -3);
+    const p2 = new THREE.PointLight(0xf59e0b, 1.0, 12);
+    p2.position.set(-2, 3, -2);
     this.pointLights.push(p2);
     this.lightingGroup.add(p2);
   }
@@ -165,12 +197,21 @@ export class SceneManager {
         this.camera.lookAt(this.cameraTarget);
       }
     } else if (this.cameraMode === 'third_person') {
-      // 3rd-person chase camera tracking behind pelvis
+      // 3rd-person chase camera with GTA-style interactive spherical orbit around pelvis
       const pelvis = robotPelvisPos || this._vPelvisPos.set(0, 0.63, 0);
-      this._vDesiredPos.set(pelvis.x, pelvis.y + 0.55, pelvis.z + 1.8);
-      this._vTarget.set(pelvis.x, pelvis.y + 0.3, pelvis.z);
-      this.camera.position.lerp(this._vDesiredPos, 0.10);
-      this._vCurrentLookAt.lerp(this._vTarget, 0.12);
+      const cosEl = Math.cos(this.orbitElevation);
+      const sinEl = Math.sin(this.orbitElevation);
+      const sinAz = Math.sin(this.orbitAzimuth);
+      const cosAz = Math.cos(this.orbitAzimuth);
+
+      const camX = pelvis.x + this.orbitDistance * cosEl * sinAz;
+      const camY = pelvis.y + 0.35 + this.orbitDistance * sinEl;
+      const camZ = pelvis.z + this.orbitDistance * cosEl * cosAz;
+
+      this._vDesiredPos.set(camX, camY, camZ);
+      this._vTarget.set(pelvis.x, pelvis.y + 0.35, pelvis.z);
+      this.camera.position.lerp(this._vDesiredPos, 0.20);
+      this._vCurrentLookAt.lerp(this._vTarget, 0.25);
       this.camera.lookAt(this._vCurrentLookAt);
     } else if (this.cameraMode === 'front_inspection') {
       // Front eye-level inspection view

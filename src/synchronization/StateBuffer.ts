@@ -54,6 +54,7 @@ export class StateBuffer {
   private estimatedJitterMs: number = 0;
   private starvationCount: number = 0;
   private extrapolationCount: number = 0;
+  private playbackTime: number = 0;
 
   // Pre-allocated reusable pose output to avoid GC in the 60 FPS render loop
   private readonly cachedPose: InterpolatedRobotPose = {
@@ -73,8 +74,8 @@ export class StateBuffer {
   };
 
   constructor(options: StateBufferOptions = {}) {
-    this.capacity = options.capacity || 16;
-    this.interpolationDelaySec = (options.interpolationDelayMs || 40) / 1000.0;
+    this.capacity = options.capacity || 24;
+    this.interpolationDelaySec = (options.interpolationDelayMs || 60) / 1000.0;
     this.maxExtrapolationSec = (options.maxExtrapolationMs || 100) / 1000.0;
     this.adaptiveBuffer = options.adaptiveBuffer ?? false;
   }
@@ -140,8 +141,35 @@ export class StateBuffer {
   }
 
   /**
+   * Advance continuous presentation playback clock (called every 60/120 Hz render frame)
+   */
+  public advancePlaybackTime(deltaSec: number): void {
+    if (this.snapshots.length === 0) return;
+    const newest = this.snapshots[this.snapshots.length - 1];
+    const idealTime = newest.timestamp - this.interpolationDelaySec;
+
+    if (this.playbackTime <= 0 || Math.abs(this.playbackTime - idealTime) > 0.35) {
+      this.playbackTime = idealTime;
+    } else {
+      const drift = this.playbackTime - idealTime;
+      let rate = 1.0;
+      const deadband = 0.005; // 5ms deadband to prevent oscillation
+      if (Math.abs(drift) > deadband) {
+        const error = drift > 0 ? drift - deadband : drift + deadband;
+        // Smooth proportional adjustment clamped between 0.90x and 1.10x
+        rate = 1.0 - Math.max(-0.10, Math.min(0.10, error * 2.0));
+      }
+      this.playbackTime += deltaSec * rate;
+    }
+  }
+
+  public getPlaybackTime(): number {
+    return this.playbackTime;
+  }
+
+  /**
    * Evaluates the interpolated robot pose for a given target timestamp.
-   * If targetTime is omitted, evaluates at (newestTimestamp - interpolationDelaySec).
+   * If targetTime is omitted, evaluates at continuous playback clock or (newestTimestamp - interpolationDelaySec).
    * Returns null if buffer is empty.
    */
   public getInterpolatedPose(targetTime?: number): InterpolatedRobotPose | null {
@@ -152,7 +180,11 @@ export class StateBuffer {
     const oldest = this.snapshots[0];
 
     // Determine target evaluation time
-    const t = targetTime !== undefined ? targetTime : newest.timestamp - this.interpolationDelaySec;
+    const t = targetTime !== undefined
+      ? targetTime
+      : this.playbackTime > 0
+      ? this.playbackTime
+      : newest.timestamp - this.interpolationDelaySec;
 
     const out = this.cachedPose;
     const wallNow = Date.now();
@@ -180,10 +212,11 @@ export class StateBuffer {
 
       if (deltaBeyond > 0 && deltaBeyond <= this.maxExtrapolationSec) {
         this.extrapolationCount++;
-        // Safe linear extrapolation of base position
-        out.basePosition[0] += newest.linearVelocity[0] * deltaBeyond;
-        out.basePosition[1] += newest.linearVelocity[1] * deltaBeyond;
-        out.basePosition[2] += newest.linearVelocity[2] * deltaBeyond;
+        if (targetTime !== undefined) {
+          out.basePosition[0] += newest.linearVelocity[0] * deltaBeyond;
+          out.basePosition[1] += newest.linearVelocity[1] * deltaBeyond;
+          out.basePosition[2] += newest.linearVelocity[2] * deltaBeyond;
+        }
         out.isExtrapolated = true;
       } else {
         out.isExtrapolated = false;
@@ -205,10 +238,27 @@ export class StateBuffer {
     const dt = s1.timestamp - s0.timestamp;
     const alpha = dt > 1e-6 ? Math.max(0.0, Math.min(1.0, (t - s0.timestamp) / dt)) : 0.0;
 
-    // Interpolate Base Position (Linear Lerp)
-    out.basePosition[0] = s0.basePosition[0] + alpha * (s1.basePosition[0] - s0.basePosition[0]);
-    out.basePosition[1] = s0.basePosition[1] + alpha * (s1.basePosition[1] - s0.basePosition[1]);
-    out.basePosition[2] = s0.basePosition[2] + alpha * (s1.basePosition[2] - s0.basePosition[2]);
+    // Interpolate Base Position using Cubic Hermite Spline (C1 velocity-continuous trajectory)
+    if (dt > 1e-6) {
+      const a2 = alpha * alpha;
+      const a3 = a2 * alpha;
+      const h00 = 2 * a3 - 3 * a2 + 1;
+      const h10 = a3 - 2 * a2 + alpha;
+      const h01 = -2 * a3 + 3 * a2;
+      const h11 = a3 - a2;
+
+      for (let k = 0; k < 3; k++) {
+        const p0 = s0.basePosition[k];
+        const p1 = s1.basePosition[k];
+        const m0 = s0.linearVelocity[k] * dt;
+        const m1 = s1.linearVelocity[k] * dt;
+        out.basePosition[k] = h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
+      }
+    } else {
+      out.basePosition[0] = s0.basePosition[0];
+      out.basePosition[1] = s0.basePosition[1];
+      out.basePosition[2] = s0.basePosition[2];
+    }
 
     // Interpolate Base Orientation (Exact Quaternion SLERP)
     this.slerpQuaternions(s0.baseOrientation, s1.baseOrientation, alpha, out.baseOrientation);
@@ -332,6 +382,7 @@ export class StateBuffer {
     this.lastArrivalWallTime = 0;
     this.lastSenderTimestamp = 0;
     this.estimatedJitterMs = 0;
+    this.playbackTime = 0;
   }
 
   public getDepth(): number {

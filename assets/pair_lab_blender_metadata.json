@@ -1,0 +1,1189 @@
+{
+  "blender_version": "5.2.2 LTS",
+  "source_blend": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/PAIR_Lab.blend",
+  "world": {
+    "name": "World",
+    "color": [
+      0.05087608844041824,
+      0.05087608844041824,
+      0.05087608844041824
+    ],
+    "use_nodes": true,
+    "hdri_texture": null,
+    "strength": 1.0
+  },
+  "lights": [],
+  "cameras": [],
+  "materials": [
+    {
+      "name": "Carpet",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "Floor_Diffuse.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/Floor_Diffuse.jpg",
+          "packed": true
+        },
+        {
+          "name": "dirty_carpet_rough_2k.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/dirty_carpet_rough_2k.jpg",
+          "packed": true
+        },
+        {
+          "name": "dirty_carpet_ao_2k.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/dirty_carpet_ao_2k.jpg",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "Material.001",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "oak_veneer_05_diff_2k.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/table_diffuse.png",
+          "packed": true
+        },
+        {
+          "name": "oak_veneer_05_rough_2k.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/oak_veneer_05_rough_2k.jpg",
+          "packed": true
+        },
+        {
+          "name": "oak_veneer_05_nor_dx_2k.jpg",
+          "filepath": "/home/shubhr/Downloads/PAIR_Lab_MUJOCO(1)/assets/oak_veneer_05_nor_dx_2k.jpg",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "Material.003",
+      "use_nodes": true,
+      "textures": [],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "OffWhite",
+      "use_nodes": true,
+      "textures": [],
+      "base_color": [
+        0.995,
+        1.0,
+        0.685,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "tripo_mat_0eb0c7ea",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_0eb0c7ea_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_0eb0c7ea-cd5e-4ec5-994d-b12f8746695f.fbm/tripo_image_0eb0c7ea-cd5e-4ec5-994d-b12f8746695f_0_0.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_0eb0c7ea_1",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_0eb0c7ea-cd5e-4ec5-994d-b12f8746695f.fbm/extracted_normal_tripo_node_fd57d906-0eb0-4181-a5a4-a5e8a1012e26.png",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 1.0
+    },
+    {
+      "name": "tripo_mat_3a807052",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_3a807052_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_3a807052-3483-42d0-bdff-f54091f4d633.fbm/tripo_image_3a807052-3483-42d0-bdff-f54091f4d633_0_0.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_3a807052_1",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_3a807052-3483-42d0-bdff-f54091f4d633.fbm/extracted_normal_tripo_node_b1d5ba77.png",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.9
+    },
+    {
+      "name": "tripo_mat_3ce66be0",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_3ce66be0_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a28300/tripo_convert_3ce66be0-4cba-4489-994a-c4d124c4b356.fbm/tripo_image_3ce66be0-4cba-4489-994a-c4d124c4b356_0_0.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_3ce66be0_3",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a28300/tripo_convert_3ce66be0-4cba-4489-994a-c4d124c4b356.fbm/extracted_normal_tripo_node_3e469a87-9269-403e-a5ab-dd159ff400f4.png",
+          "packed": true
+        },
+        {
+          "name": "fabric_armchair_3d_model_roughness.001",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a28300/tripo_convert_3ce66be0-4cba-4489-994a-c4d124c4b356.fbm/fabric_armchair_3d_model_roughness.JPEG",
+          "packed": true
+        },
+        {
+          "name": "fabric_armchair_3d_model_metallic.001",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a28300/tripo_convert_3ce66be0-4cba-4489-994a-c4d124c4b356.fbm/fabric_armchair_3d_model_metallic.JPEG",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 1.0,
+      "roughness": 1.0
+    },
+    {
+      "name": "tripo_mat_4648c5fa",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_4648c5fa_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_4648c5fa-7f30-4ebe-90c7-23d3c4df03ae.fbm/tripo_image_4648c5fa-7f30-4ebe-90c7-23d3c4df03ae_0_0.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_4648c5fa_1",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_4648c5fa-7f30-4ebe-90c7-23d3c4df03ae.fbm/extracted_normal_tripo_node_42f8b4d4.png",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.9
+    },
+    {
+      "name": "tripo_mat_4cb0bd4b",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_4cb0bd4b_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21096/tripo_convert_4cb0bd4b-eb6d-4d99-8f5f-106b95ed753c.fbm/Color.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_4cb0bd4b_3",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21096/tripo_convert_4cb0bd4b-eb6d-4d99-8f5f-106b95ed753c.fbm/Normal.png",
+          "packed": true
+        },
+        {
+          "name": "gaming_chair_3d_model_roughness",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21096/tripo_convert_4cb0bd4b-eb6d-4d99-8f5f-106b95ed753c.fbm/gaming_chair_3d_model_roughness.JPEG",
+          "packed": true
+        },
+        {
+          "name": "gaming_chair_3d_model_metallic",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21096/tripo_convert_4cb0bd4b-eb6d-4d99-8f5f-106b95ed753c.fbm/gaming_chair_3d_model_metallic.JPEG",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "tripo_mat_83625889",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_83625889_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21812/tripo_convert_83625889-ec8e-463c-a6d1-8afd94837c4d.fbm/tripo_node_24e15f6c-47fc-497b-aca7-c508c7d1d60a_BaseColor.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_83625889_3",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21812/tripo_convert_83625889-ec8e-463c-a6d1-8afd94837c4d.fbm/tripo_node_24e15f6c-47fc-497b-aca7-c508c7d1d60a_Normal_Bake.jpg",
+          "packed": true
+        },
+        {
+          "name": "adjustable_standing_desk_3d_model_roughness",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21812/tripo_convert_83625889-ec8e-463c-a6d1-8afd94837c4d.fbm/adjustable_standing_desk_3d_model_roughness.JPEG",
+          "packed": true
+        },
+        {
+          "name": "adjustable_standing_desk_3d_model_metallic",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a21812/tripo_convert_83625889-ec8e-463c-a6d1-8afd94837c4d.fbm/adjustable_standing_desk_3d_model_metallic.JPEG",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    },
+    {
+      "name": "tripo_mat_d417ecab",
+      "use_nodes": true,
+      "textures": [
+        {
+          "name": "tripo_image_d417ecab_0",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_d417ecab-f018-4047-a5bf-da29aad9ead8.fbm/tripo_image_d417ecab-f018-4047-a5bf-da29aad9ead8_0_0.jpg",
+          "packed": true
+        },
+        {
+          "name": "tripo_image_d417ecab_1",
+          "filepath": "C:/Users/UTKARS~1/AppData/Local/Temp/blender_a27176/tripo_convert_d417ecab-f018-4047-a5bf-da29aad9ead8.fbm/extracted_normal_tripo_node_7a74c249.png",
+          "packed": true
+        }
+      ],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.9
+    },
+    {
+      "name": "White",
+      "use_nodes": true,
+      "textures": [],
+      "base_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.5
+    }
+  ],
+  "objects": [
+    {
+      "name": "WallsCeiling",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        0.0,
+        0.0,
+        2.67
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        9.05,
+        7.71,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 7,
+      "polygon_count": 3,
+      "materials": [
+        "OffWhite",
+        "White"
+      ]
+    },
+    {
+      "name": "Side_Room",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        5.95,
+        6.41,
+        2.67
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        3.1,
+        1.3,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": [
+        "OffWhite"
+      ]
+    },
+    {
+      "name": "Pillar_Short_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        8.94,
+        -3.3847,
+        2.67
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.11,
+        0.5,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": [
+        "OffWhite"
+      ]
+    },
+    {
+      "name": "Table_Big_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        5.75,
+        4.0,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.95,
+        1.025,
+        1.0
+      ],
+      "visible": true,
+      "vertex_count": 26,
+      "polygon_count": 19,
+      "materials": [
+        "Material.001"
+      ]
+    },
+    {
+      "name": "Pillar_Mid",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        9.05,
+        -7.71,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.5,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": [
+        "OffWhite"
+      ]
+    },
+    {
+      "name": "Table_Small_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -5.3558,
+        3.4952,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        2.18,
+        0.9,
+        0.85
+      ],
+      "visible": true,
+      "vertex_count": 34,
+      "polygon_count": 23,
+      "materials": [
+        "Material.001"
+      ]
+    },
+    {
+      "name": "Adjustable_Table",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -8.1079,
+        -0.5,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        1.5708
+      ],
+      "scale": [
+        3.05,
+        3.05,
+        3.05
+      ],
+      "visible": true,
+      "vertex_count": 8887,
+      "polygon_count": 9245,
+      "materials": [
+        "tripo_mat_83625889"
+      ]
+    },
+    {
+      "name": "Pillar_Big",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -9.05,
+        -7.71,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.5,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    },
+    {
+      "name": "Chair_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -4.2506,
+        2.1743,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_2",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -6.0637,
+        2.1743,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_4",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -6.0637,
+        4.8661,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        6.2832
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_3",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -4.2506,
+        4.8661,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        6.2832
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_7",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -4.2506,
+        -5.7314,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_8",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -6.0637,
+        -5.7314,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_6",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -6.0637,
+        -3.0396,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        6.2832
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_5",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -4.2506,
+        -3.0396,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        6.2832
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_11",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        7.464,
+        2.6836,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_10",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        5.6508,
+        2.6836,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Chair_9",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        4.0697,
+        2.6836,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        -0.0,
+        3.1416
+      ],
+      "scale": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "visible": true,
+      "vertex_count": 9695,
+      "polygon_count": 10169,
+      "materials": [
+        "tripo_mat_3ce66be0"
+      ]
+    },
+    {
+      "name": "Table_Small_2",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -5.3558,
+        -4.4328,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        2.18,
+        0.9,
+        0.85
+      ],
+      "visible": true,
+      "vertex_count": 34,
+      "polygon_count": 23,
+      "materials": [
+        "Material.001"
+      ]
+    },
+    {
+      "name": "Glass_Wall",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        0.0,
+        0.0,
+        2.67
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        9.05,
+        7.71,
+        2.67
+      ],
+      "visible": false,
+      "vertex_count": 6,
+      "polygon_count": 2,
+      "materials": [
+        "Material.003"
+      ]
+    },
+    {
+      "name": "BeanNag_2",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        0.927,
+        4.5765,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.75,
+        1.75,
+        1.75
+      ],
+      "visible": true,
+      "vertex_count": 9161,
+      "polygon_count": 9621,
+      "materials": [
+        "tripo_mat_0eb0c7ea"
+      ]
+    },
+    {
+      "name": "black bean bag 3d model.001",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        1.2073,
+        4.5765,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.75,
+        1.75,
+        1.75
+      ],
+      "visible": false,
+      "vertex_count": 9161,
+      "polygon_count": 9621,
+      "materials": [
+        "tripo_mat_0eb0c7ea"
+      ]
+    },
+    {
+      "name": "BeanBag_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -1.4294,
+        4.5765,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        -0.0,
+        -1.9419
+      ],
+      "scale": [
+        1.75,
+        1.75,
+        1.75
+      ],
+      "visible": true,
+      "vertex_count": 9161,
+      "polygon_count": 9621,
+      "materials": [
+        "tripo_mat_0eb0c7ea"
+      ]
+    },
+    {
+      "name": "WhiteBoard_1",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        7.7812,
+        -1.4121,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        -0.0,
+        -1.5708
+      ],
+      "scale": [
+        3.0,
+        3.0,
+        3.0
+      ],
+      "visible": true,
+      "vertex_count": 9411,
+      "polygon_count": 9710,
+      "materials": [
+        "tripo_mat_4648c5fa"
+      ]
+    },
+    {
+      "name": "Screen",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -0.7744,
+        6.7674,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        4.5,
+        4.5,
+        4.5
+      ],
+      "visible": true,
+      "vertex_count": 6465,
+      "polygon_count": 6573,
+      "materials": [
+        "tripo_mat_d417ecab"
+      ]
+    },
+    {
+      "name": "Floor",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        0.0,
+        0.0,
+        2.67
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        9.05,
+        7.71,
+        2.67
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": [
+        "Carpet"
+      ]
+    },
+    {
+      "name": "Almirah",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -7.7865,
+        6.9778,
+        0.0
+      ],
+      "rotation_euler": [
+        -0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        4.4,
+        4.4,
+        4.4
+      ],
+      "visible": true,
+      "vertex_count": 10192,
+      "polygon_count": 10327,
+      "materials": [
+        "tripo_mat_3a807052"
+      ]
+    },
+    {
+      "name": "GamingChair",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -6.9262,
+        -0.5,
+        0.0
+      ],
+      "rotation_euler": [
+        0.0,
+        -0.0,
+        -1.5708
+      ],
+      "scale": [
+        2.75,
+        2.75,
+        2.75
+      ],
+      "visible": true,
+      "vertex_count": 48668,
+      "polygon_count": 48635,
+      "materials": [
+        "tripo_mat_4cb0bd4b"
+      ]
+    },
+    {
+      "name": "Cube.002",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        -2.3613,
+        -1.4435,
+        0.25
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.25
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    },
+    {
+      "name": "Cube.003",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        0.5355,
+        1.4483,
+        0.175
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.175
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    },
+    {
+      "name": "Cube.005",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        3.2359,
+        -1.0639,
+        0.15
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.15
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    },
+    {
+      "name": "Cube.007",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        1.2309,
+        -5.2472,
+        0.25
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.2
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    },
+    {
+      "name": "Cube.016",
+      "type": "MESH",
+      "parent": null,
+      "location": [
+        4.9063,
+        -3.7199,
+        0.25
+      ],
+      "rotation_euler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.25
+      ],
+      "visible": true,
+      "vertex_count": 8,
+      "polygon_count": 6,
+      "materials": []
+    }
+  ]
+}

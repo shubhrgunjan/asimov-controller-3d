@@ -2,11 +2,11 @@
  * VirtualJoystick.tsx
  * 
  * High-performance virtual touch joystick for mobile teleoperation.
- * Uses React Native PanResponder for low-latency touch tracking,
- * clamps thumbstick within unit radius, and calls onMove/onRelease callbacks.
+ * Uses React Native PanResponder with capture priority and termination lock,
+ * guaranteeing seamless simultaneous dual-joystick operation and concurrent camera panning.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { View, StyleSheet, PanResponder, GestureResponderEvent, PanResponderGestureState } from 'react-native';
 
 interface VirtualJoystickProps {
@@ -28,43 +28,59 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
   const maxDistance = radius - knobSize / 2;
 
   const [knobPos, setKnobPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+  const onReleaseRef = useRef(onRelease);
+  onReleaseRef.current = onRelease;
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {},
-      onPanResponderMove: (_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-        const dx = gestureState.dx;
-        const dy = gestureState.dy;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
 
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const clampedDist = Math.min(dist, maxDistance);
-        const angle = Math.atan2(dy, dx);
+        onPanResponderGrant: () => {
+          // Touch begins inside joystick surface
+        },
 
-        const clampedX = Math.cos(angle) * clampedDist;
-        const clampedY = Math.sin(angle) * clampedDist;
+        onPanResponderMove: (_evt: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+          const dx = gestureState.dx;
+          const dy = gestureState.dy;
 
-        setKnobPos({ x: clampedX, y: clampedY });
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const clampedDist = Math.min(dist, maxDistance);
+          const angle = Math.atan2(dy, dx);
 
-        // Normalized outputs:
-        // normX: [-1.0, 1.0] (right = +1, left = -1)
-        // normY: [-1.0, 1.0] (up/forward = +1, down/backward = -1, inverted screen coords)
-        const normX = clampedDist > 0 ? clampedX / maxDistance : 0;
-        const normY = clampedDist > 0 ? -clampedY / maxDistance : 0;
+          const clampedX = Math.cos(angle) * clampedDist;
+          const clampedY = Math.sin(angle) * clampedDist;
 
-        onMove(normX, normY);
-      },
-      onPanResponderRelease: () => {
-        setKnobPos({ x: 0, y: 0 });
-        onRelease();
-      },
-      onPanResponderTerminate: () => {
-        setKnobPos({ x: 0, y: 0 });
-        onRelease();
-      },
-    })
-  ).current;
+          setKnobPos({ x: clampedX, y: clampedY });
+
+          // Normalized outputs:
+          // normX: [-1.0, 1.0] (right = +1, left = -1)
+          // normY: [-1.0, 1.0] (up/forward = +1, down/backward = -1, inverted screen coords)
+          const normX = clampedDist > 0 ? clampedX / maxDistance : 0;
+          const normY = clampedDist > 0 ? -clampedY / maxDistance : 0;
+
+          onMoveRef.current(normX, normY);
+        },
+
+        onPanResponderRelease: () => {
+          setKnobPos({ x: 0, y: 0 });
+          onReleaseRef.current();
+        },
+
+        onPanResponderTerminate: () => {
+          setKnobPos({ x: 0, y: 0 });
+          onReleaseRef.current();
+        },
+      }),
+    [maxDistance]
+  );
 
   return (
     <View
@@ -80,11 +96,12 @@ export const VirtualJoystick: React.FC<VirtualJoystickProps> = ({
       {...panResponder.panHandlers}
     >
       {/* Target Crosshair */}
-      <View style={[styles.crosshairH, { width: size * 0.6 }]} />
-      <View style={[styles.crosshairV, { height: size * 0.6 }]} />
+      <View style={[styles.crosshairH, { width: size * 0.6 }]} pointerEvents="none" />
+      <View style={[styles.crosshairV, { height: size * 0.6 }]} pointerEvents="none" />
 
       {/* Draggable Knob */}
       <View
+        pointerEvents="none"
         style={[
           styles.knob,
           {
@@ -120,7 +137,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   knob: {
-    position: 'absolute',
     borderWidth: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

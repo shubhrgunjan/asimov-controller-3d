@@ -8,6 +8,7 @@
 
 import { ResolutionMode } from '../renderer/ThreeRenderer';
 import { CameraMode } from '../renderer/SceneManager';
+import { getExpoHostAddress } from '../utils/NetworkDiscovery';
 
 export interface ConnectionConfig {
   host: string;
@@ -44,14 +45,14 @@ export interface AppConfig {
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   connection: {
-    host: '127.0.0.1',
+    host: getExpoHostAddress() || '127.0.0.1',
     port: 8854,
     autoReconnect: true,
     reconnectIntervalMs: 1500,
     maxReconnectAttempts: 10,
   },
   rendering: {
-    resolution: '720p',
+    resolution: 'native',
     defaultCameraMode: 'third_person',
     shadowsEnabled: false,
   },

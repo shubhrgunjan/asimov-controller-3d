@@ -34,17 +34,17 @@ export interface RenderStats {
 export class ThreeRenderer {
   private gl: ExpoWebGLRenderingContext;
   private renderer: THREE.WebGLRenderer;
-  private currentResolutionMode: ResolutionMode = '720p';
+  private currentResolutionMode: ResolutionMode = 'native';
   private nativeWidth: number;
   private nativeHeight: number;
-  private activeWidth: number = 1280;
-  private activeHeight: number = 720;
+  private activeWidth: number = 1920;
+  private activeHeight: number = 1080;
   private shadowsEnabled: boolean = true;
 
   constructor(gl: ExpoWebGLRenderingContext) {
     this.gl = gl;
-    this.nativeWidth = gl.drawingBufferWidth || 1280;
-    this.nativeHeight = gl.drawingBufferHeight || 720;
+    this.nativeWidth = gl.drawingBufferWidth || 1920;
+    this.nativeHeight = gl.drawingBufferHeight || 1080;
 
     // Create synthetic canvas descriptor for Three.js WebGLRenderer compatibility with React Native GLView
     const mockCanvas = {
@@ -89,7 +89,8 @@ export class ThreeRenderer {
     this.renderer.shadowMap.enabled = this.shadowsEnabled;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Configure tone mapping for realistic physical materials
+    // Configure tone mapping and sRGB color space for realistic physical materials matching Blender
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
@@ -101,10 +102,14 @@ export class ThreeRenderer {
    * Set target rendering resolution.
    * 720p: 1280x720 (landscape) or 720x1280 (portrait)
    * 1080p: 1920x1080 (landscape) or 1080x1920 (portrait)
-   * native: device physical buffer
+   * native: device physical buffer (full screen)
    */
   public setResolution(mode: ResolutionMode): RendererResolution {
     this.currentResolutionMode = mode;
+    if (this.gl.drawingBufferWidth > 0 && this.gl.drawingBufferHeight > 0) {
+      this.nativeWidth = this.gl.drawingBufferWidth;
+      this.nativeHeight = this.gl.drawingBufferHeight;
+    }
     const isLandscape = this.nativeWidth >= this.nativeHeight;
 
     let targetWidth: number;
@@ -182,6 +187,21 @@ export class ThreeRenderer {
    */
   public render(scene: THREE.Scene, camera: THREE.Camera): RenderStats {
     const t0 = performance.now();
+
+    // Dynamically track orientation changes and device drawing buffer changes
+    const bufW = this.gl.drawingBufferWidth;
+    const bufH = this.gl.drawingBufferHeight;
+    if (bufW > 0 && bufH > 0 && (bufW !== this.nativeWidth || bufH !== this.nativeHeight)) {
+      this.nativeWidth = bufW;
+      this.nativeHeight = bufH;
+      if (this.currentResolutionMode === 'native') {
+        this.setResolution('native');
+        if (camera instanceof THREE.PerspectiveCamera) {
+          camera.aspect = this.activeWidth / this.activeHeight;
+          camera.updateProjectionMatrix();
+        }
+      }
+    }
 
     // Execute Three.js rendering pipeline
     this.renderer.render(scene, camera);

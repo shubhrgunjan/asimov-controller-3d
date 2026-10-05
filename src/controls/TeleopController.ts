@@ -19,8 +19,8 @@ export interface TeleopLimits {
   maxVxForward: number; // m/s (default: 0.8)
   maxVxReverse: number; // m/s (default: 0.4)
   maxVy: number; // m/s (default: 0.3)
-  maxYawRate: number; // rad/s (default: 0.6)
-  deadzone: number; // normalized radius (default: 0.08)
+  maxYawRate: number; // rad/s (default: 0.8)
+  deadzone: number; // normalized radius (default: 0.05)
 }
 
 export interface SpeedProfileMultipliers {
@@ -41,7 +41,7 @@ const SPEED_PROFILES: Record<SpeedProfile, SpeedProfileMultipliers> = {
     vxForward: 0.75,  // 0.8 * 0.75 = 0.60 m/s
     vxReverse: 0.75,  // 0.4 * 0.75 = 0.30 m/s
     vy: 0.80,         // 0.3 * 0.80 = 0.24 m/s
-    yawRate: 0.80,    // 0.6 * 0.80 = 0.48 rad/s
+    yawRate: 0.75,    // 0.6 * 0.75 = 0.45 rad/s
   },
   SPORT: {
     vxForward: 1.0,   // 0.80 m/s (max authorized by backend)
@@ -83,6 +83,7 @@ export class TeleopController {
   private lastDispatchTime: number = 0;
   private dispatchIntervalMs: number = 40; // 25 Hz command rate
   private isMoving: boolean = false;
+  private activeStreamTimer: any = null;
 
   // Empirical latency tracking
   private lastTouchInputTime: number = 0;
@@ -156,16 +157,66 @@ export class TeleopController {
     }
   }
 
+  // Sprint / Turbo mode toggle (increases walking speed to maximum authorized velocity)
+  private isSprintActive: boolean = false;
+
+  // Right-screen D-pad directional arrow states
+  private dpadState = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+
+  public setSprintActive(active: boolean): void {
+    this.isSprintActive = active;
+    this.recomputeVelocities();
+  }
+
+  public toggleSprint(): boolean {
+    this.isSprintActive = !this.isSprintActive;
+    this.recomputeVelocities();
+    return this.isSprintActive;
+  }
+
+  public isSprint(): boolean {
+    return this.isSprintActive;
+  }
+
   /**
-   * Left joystick updates forward/backward (Y) and lateral left/right (X)
+   * Update D-pad arrow button states (Up, Down, Left, Right)
+   */
+  public updateDpad(direction: 'up' | 'down' | 'left' | 'right', pressed: boolean): void {
+    if (this.isLocked) return;
+    const t0 = Date.now();
+    this.lastTouchInputTime = t0;
+    this.dpadState[direction] = pressed;
+    this.recomputeVelocities();
+    this.maybeDispatch(t0);
+  }
+
+  public releaseDpad(): void {
+    this.dpadState.up = false;
+    this.dpadState.down = false;
+    this.dpadState.left = false;
+    this.dpadState.right = false;
+    this.recomputeVelocities();
+    this.forceZeroVelocity();
+  }
+
+  /**
+   * Left joystick updates game-like full movement control:
+   * - Vertical (Y): Forward / Reverse walking velocity (Vx)
+   * - Horizontal (X): Game arcade steering (turning while walking or pivoting in place)
+   *   Right (+X) -> Rotates robot right while walking
+   *   Left  (-X) -> Rotates robot left while walking
    */
   public updateLeftJoystick(normX: number, normY: number): void {
     if (this.isLocked) return;
     const t0 = Date.now();
     this.lastTouchInputTime = t0;
 
-    const r = Math.hypot(normX, normY);
-    if (r < this.limits.deadzone) {
+    if (Math.abs(normX) <= this.limits.deadzone && Math.abs(normY) <= this.limits.deadzone) {
       this.leftX = 0;
       this.leftY = 0;
     } else {
@@ -178,14 +229,17 @@ export class TeleopController {
   }
 
   /**
-   * Right joystick updates yaw rate (X)
+   * Right joystick updates yaw rate using official robot rotation mechanics.
+   * Horizontal displacement controls angular velocity around the Z axis.
+   * Right (+X) -> Turn Right (Clockwise)
+   * Left  (-X) -> Turn Left  (Counter-Clockwise)
    */
-  public updateRightJoystick(normX: number): void {
+  public updateRightJoystick(normX: number, _normY: number = 0): void {
     if (this.isLocked) return;
     const t0 = Date.now();
     this.lastTouchInputTime = t0;
 
-    if (Math.abs(normX) < this.limits.deadzone) {
+    if (Math.abs(normX) <= this.limits.deadzone) {
       this.rightX = 0;
     } else {
       this.rightX = Math.max(-1, Math.min(1, normX));
@@ -217,28 +271,56 @@ export class TeleopController {
       this.currentVy = 0;
       this.currentWz = 0;
       this.isMoving = false;
+      this.stopStreamTimer();
       return;
     }
 
     const mult = SPEED_PROFILES[this.speedProfile];
+    const sprintFactor = this.isSprintActive ? 1.5 : 1.0;
+
     const curvedY = this.applyCurve(this.leftY);
     const curvedX = this.applyCurve(this.leftX);
     const curvedYaw = this.applyCurve(this.rightX);
 
-    // Forward / Reverse
+    // 1. Forward / Reverse walking velocity (Joystick + Dpad)
+    let vx = 0;
     if (curvedY >= 0) {
-      this.targetVx = (curvedY * this.limits.maxVxForward * mult.vxForward) || 0;
+      vx = (curvedY * this.limits.maxVxForward * mult.vxForward * sprintFactor) || 0;
     } else {
-      this.targetVx = (curvedY * this.limits.maxVxReverse * mult.vxReverse) || 0;
+      vx = (curvedY * this.limits.maxVxReverse * mult.vxReverse) || 0;
     }
 
-    // Lateral (in MuJoCo, +Y is Left -> joystick left (-X) maps to +Vy)
-    this.targetVy = (-curvedX * this.limits.maxVy * mult.vy) || 0;
+    if (this.dpadState.up) {
+      vx += 0.40 * sprintFactor;
+    }
+    if (this.dpadState.down) {
+      vx -= 0.30;
+    }
+    this.targetVx = vx;
 
-    // Yaw (in MuJoCo, +Yaw is CCW -> joystick left (-X) maps to +Wz)
-    this.targetWz = (-curvedYaw * this.limits.maxYawRate * mult.yawRate) || 0;
+    // 2. Lateral strafe velocity (in MuJoCo, +Y is Left -> joystick left (-X) maps to +Vy)
+    let vy = (-curvedX * this.limits.maxVy * mult.vy) || 0;
+    this.targetVy = vy;
 
-    // Hard bounds clamping to guarantee backend-authorized contracts
+    // 3. Yaw rotation / steering velocity (in MuJoCo +Wz is Left, -Wz is Right):
+    // Left stick horizontal deflection acts as game-like steering (turning right when pushed right)
+    // Right stick horizontal deflection provides direct rotational adjustment
+    // D-pad left/right provides standard turning
+    let wz = (-curvedYaw * this.limits.maxYawRate * mult.yawRate) || 0;
+    // When right stick is neutral, left stick provides game-like arcade steering
+    if (Math.abs(curvedYaw) <= 0.05) {
+      wz += (-curvedX * this.limits.maxYawRate * mult.yawRate);
+    }
+
+    if (this.dpadState.left) {
+      wz += 0.65; // Turn left
+    }
+    if (this.dpadState.right) {
+      wz -= 0.65; // Turn right
+    }
+    this.targetWz = wz;
+
+    // Hard bounds clamping to guarantee backend-authorized contracts (VX: [-0.6, 0.8], VY: [-0.5, 0.5], WZ: [-0.8, 0.8])
     this.targetVx = Math.max(-0.6, Math.min(0.8, this.targetVx));
     this.targetVy = Math.max(-0.5, Math.min(0.5, this.targetVy));
     this.targetWz = Math.max(-0.8, Math.min(0.8, this.targetWz));
@@ -249,7 +331,14 @@ export class TeleopController {
       this.currentWz = this.targetWz;
     }
 
+    const wasMoving = this.isMoving;
     this.isMoving = Math.abs(this.targetVx) > 1e-4 || Math.abs(this.targetVy) > 1e-4 || Math.abs(this.targetWz) > 1e-4;
+
+    if (this.isMoving && !wasMoving) {
+      this.startStreamTimer();
+    } else if (!this.isMoving && wasMoving) {
+      this.stopStreamTimer();
+    }
   }
 
   private updateSlew(now: number): void {
@@ -300,6 +389,27 @@ export class TeleopController {
     }
   }
 
+  private startStreamTimer(): void {
+    if (this.activeStreamTimer) return;
+    this.activeStreamTimer = setInterval(() => {
+      if (this.isMoving) {
+        this.dispatchCurrentVelocity(Date.now());
+      } else {
+        this.stopStreamTimer();
+      }
+    }, this.dispatchIntervalMs);
+    if (this.activeStreamTimer && typeof this.activeStreamTimer.unref === 'function') {
+      this.activeStreamTimer.unref();
+    }
+  }
+
+  private stopStreamTimer(): void {
+    if (this.activeStreamTimer) {
+      clearInterval(this.activeStreamTimer);
+      this.activeStreamTimer = null;
+    }
+  }
+
   private maybeDispatch(inputTime: number): void {
     const now = Date.now();
     if (now - this.lastDispatchTime >= this.dispatchIntervalMs) {
@@ -307,11 +417,15 @@ export class TeleopController {
     }
   }
 
-  private forceZeroVelocity(): void {
+  public forceZeroVelocity(): void {
     if (!this.isMoving) {
+      this.stopStreamTimer();
       this.currentVx = 0;
       this.currentVy = 0;
       this.currentWz = 0;
+      this.client.sendCommand(CommandType.WALK, 0, 0, 0);
+    } else {
+      // The other joystick is still deflected; dispatch updated velocities immediately
       this.dispatchCurrentVelocity(Date.now());
     }
   }
@@ -374,5 +488,6 @@ export class TeleopController {
     this.currentVy = 0;
     this.currentWz = 0;
     this.isMoving = false;
+    this.stopStreamTimer();
   }
 }

@@ -134,7 +134,7 @@ describe('AppSettingsManager', () => {
     const config = settings.getConfig();
     expect(config.connection.port).toBe(8854);
     expect(config.connection.autoReconnect).toBe(true);
-    expect(config.rendering.resolution).toBe('720p');
+    expect(config.rendering.resolution).toBe('native');
     expect(config.synchronization.interpolationDelayMs).toBe(40);
     expect(config.diagnostics.showDevHud).toBe(false);
   });

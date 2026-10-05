@@ -84,6 +84,7 @@ export class BenchmarkController {
       port: conn.port,
       autoConnect: false,
     });
+    this.teleopSession.setScene(this.scene);
   }
 
   public setAppMode(mode: 'TELEOP' | 'BENCHMARK'): void {
@@ -132,17 +133,17 @@ export class BenchmarkController {
     const deltaSeconds = Math.min(0.1, nowSeconds - this.lastTimeSeconds);
     this.lastTimeSeconds = nowSeconds;
 
-    // 1. Update Camera and Lighting with live robot anchors (zero allocations)
-    this.scene.robotModel.getHeadWorldPosition(this.scratchHeadPos);
-    this.scene.robotModel.getPelvisWorldPosition(this.scratchPelvisPos);
-    this.sceneManager.update(nowSeconds, deltaSeconds, this.scratchHeadPos, this.scratchPelvisPos);
-
-    // 2. Update Dynamic Workload / Kinematic Joints
+    // 1. Update Robot Kinematics / Authoritative Teleoperation Pose first
     if (this.appMode === 'TELEOP') {
-      this.teleopSession.update();
+      this.teleopSession.update(deltaSeconds);
     } else {
       this.scene.update(nowSeconds, deltaSeconds);
     }
+
+    // 2. Update Camera and Lighting tracking the synchronized robot anchors (zero lag, zero jitter)
+    this.scene.robotModel.getHeadWorldPosition(this.scratchHeadPos);
+    this.scene.robotModel.getPelvisWorldPosition(this.scratchPelvisPos);
+    this.sceneManager.update(nowSeconds, deltaSeconds, this.scratchHeadPos, this.scratchPelvisPos);
 
     // 3. Render Three.js Scene and swap EGL buffer
     const renderStats = this.renderer.render(this.sceneManager.scene, this.sceneManager.camera);

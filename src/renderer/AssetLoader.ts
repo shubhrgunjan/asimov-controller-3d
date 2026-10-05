@@ -1,3 +1,12 @@
+// Polyfill navigator.userAgent for Three.js GLTFLoader on React Native / Hermes
+if (typeof navigator !== 'undefined' && !(navigator as any).userAgent) {
+  Object.defineProperty(navigator, 'userAgent', {
+    value: 'ReactNative',
+    configurable: true,
+    writable: true,
+  });
+}
+
 import * as THREE from 'three';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 

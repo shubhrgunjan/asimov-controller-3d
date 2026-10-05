@@ -1,8 +1,12 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SceneManager } from '../renderer/SceneManager';
+import { getExpoHostAddress } from '../utils/NetworkDiscovery';
 
 import { AsimovRobotModel, ValidationPoseName } from '../model/AsimovRobotModel';
 import { ASIMOV_1_TRIANGLES } from '../model/asimov_1_model_data';
+import { PAIR_LAB_BODIES, PAIR_LAB_CUBES, PAIR_LAB_MESHES } from '../model/pair_lab_model_data';
+import { bindAuthoritativeMaterials, getAuthoritativeDataTexture } from '../model/pair_lab_textures';
 
 export type BenchmarkLevel =
   | 'L1'
@@ -150,6 +154,80 @@ function createProceduralDataTexture(width: number, height: number, pattern: 'ch
   return texture;
 }
 
+/**
+ * Creates high-fidelity laboratory floor ceramic tile DataTexture with crisp 1m x 1m grid grout lines.
+ */
+function createLabFloorTexture(repeatX: number, repeatY: number): THREE.DataTexture {
+  const width = 256;
+  const height = 256;
+  const size = width * height;
+  const data = new Uint8Array(4 * size);
+  const borderWidth = 6;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const isBorder = x < borderWidth || x >= width - borderWidth || y < borderWidth || y >= height - borderWidth;
+      const isInnerBevel =
+        !isBorder &&
+        (x < borderWidth + 3 || x >= width - borderWidth - 3 || y < borderWidth + 3 || y >= height - borderWidth - 3);
+
+      if (isBorder) {
+        data[idx] = 71;
+        data[idx + 1] = 85;
+        data[idx + 2] = 105;
+        data[idx + 3] = 255;
+      } else if (isInnerBevel) {
+        data[idx] = 148;
+        data[idx + 1] = 163;
+        data[idx + 2] = 184;
+        data[idx + 3] = 255;
+      } else {
+        const noise = ((x * 13 + y * 23) % 7) - 3;
+        data[idx] = Math.max(0, Math.min(255, 226 + noise));
+        data[idx + 1] = Math.max(0, Math.min(255, 232 + noise));
+        data[idx + 2] = Math.max(0, Math.min(255, 240 + noise));
+        data[idx + 3] = 255;
+      }
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeatX, repeatY);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createLabFloorRoughness(repeatX: number, repeatY: number): THREE.DataTexture {
+  const width = 128;
+  const height = 128;
+  const size = width * height;
+  const data = new Uint8Array(4 * size);
+  const borderWidth = 3;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const isBorder = x < borderWidth || x >= width - borderWidth || y < borderWidth || y >= height - borderWidth;
+
+      const r = isBorder ? 220 : 70;
+      data[idx] = r;
+      data[idx + 1] = r;
+      data[idx + 2] = r;
+      data[idx + 3] = 255;
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeatX, repeatY);
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export interface ArticulatedJoint {
   mesh: THREE.Object3D;
   axis: 'x' | 'y' | 'z';
@@ -174,13 +252,22 @@ export class BenchmarkScene {
   private animationEnabled: boolean = true;
 
   public readonly robotModel: AsimovRobotModel = new AsimovRobotModel();
+  public readonly dynamicObstacleGroup: THREE.Group = new THREE.Group();
+  public readonly pairLabGroup: THREE.Group = new THREE.Group();
+  private currentEnvironmentPreset: string = 'pair_lab';
+  private floorMesh: THREE.Mesh | null = null;
 
   constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
+    this.pairLabGroup.name = 'PAIR_Lab_MUJOCO';
+    this.dynamicObstacleGroup.name = 'MuJoCo_Dynamic_Environment';
+    this.sceneManager.worldGroup.add(this.pairLabGroup);
+    this.sceneManager.worldGroup.add(this.dynamicObstacleGroup);
+    this.sceneManager.robotGroup.add(this.robotModel.rootGroup);
     this.robotModel.load().catch((err) => {
       console.warn('Failed to pre-load AsimovRobotModel:', err);
     });
-    this.loadLevel('L1');
+    this.loadLevel('ASIMOV_ENVIRONMENT');
   }
 
   public async waitForReady(): Promise<void> {
@@ -264,8 +351,8 @@ export class BenchmarkScene {
   private buildWorld(level: BenchmarkLevel): void {
     const worldGroup = this.sceneManager.worldGroup;
 
-    // Floor Quad
-    const floorGeo = new THREE.PlaneGeometry(30, 30, 20, 20);
+    // Floor Quad (expansive floor for panoramic mobile view)
+    const floorGeo = new THREE.PlaneGeometry(80, 80, 32, 32);
     floorGeo.rotateX(-Math.PI / 2);
 
     let floorMat: THREE.Material;
@@ -288,11 +375,25 @@ export class BenchmarkScene {
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.receiveShadow = level !== 'L1';
     worldGroup.add(floorMesh);
+    this.floorMesh = floorMesh;
 
     // Coordinate Grid Reference
-    const grid = new THREE.GridHelper(30, 30, 0x38bdf8, 0x334155);
+    const grid = new THREE.GridHelper(80, 80, 0x38bdf8, 0x334155);
     grid.position.y = 0.005;
     worldGroup.add(grid);
+
+    // In authentic ASIMOV_ENVIRONMENT (PAIR Lab), the dedicated solid floor slab and foundation are used
+    if (level === 'ASIMOV_ENVIRONMENT') {
+      floorMesh.visible = false;
+      grid.visible = false;
+    }
+    // Ensure dynamic environment group and PAIR Lab group are mounted
+    if (!worldGroup.children.includes(this.dynamicObstacleGroup)) {
+      worldGroup.add(this.dynamicObstacleGroup);
+    }
+    if (!worldGroup.children.includes(this.pairLabGroup)) {
+      worldGroup.add(this.pairLabGroup);
+    }
   }
 
   /**
@@ -708,7 +809,386 @@ export class BenchmarkScene {
   private buildAsimovStatic(): void {
     this.sceneManager.setLighting(true);
     this.robotModel.resetToNeutralPose();
+    this.robotModel.applyBasePose([0, 0, 0.630], [0, 0, 0, 1]);
     this.sceneManager.objectsGroup.add(this.robotModel.rootGroup);
+  }
+
+  /**
+   * PAIR Lab MUJOCO Environment
+   * Authoritative 1:1 visual environment loaded directly from PAIR_Lab.glb
+   * (Exported directly from PAIR_Lab.blend without manual reconstruction).
+   */
+  public authoritativeGlbLoaded: boolean = false;
+  private authoritativeLabModel: THREE.Group | null = null;
+  private immediateEnvironmentModel: THREE.Group | null = null;
+
+  public async loadAuthoritativePairLabEnvironment(glbPathOrUrl?: string): Promise<THREE.Group> {
+    if (this.authoritativeLabModel) {
+      if (!this.pairLabGroup.children.includes(this.authoritativeLabModel)) {
+        this.pairLabGroup.add(this.authoritativeLabModel);
+      }
+      return this.pairLabGroup;
+    }
+
+    const loader = new GLTFLoader();
+
+    // Node / Testing environment: read from filesystem
+    if (typeof window === 'undefined' && typeof process !== 'undefined') {
+      try {
+        if (typeof globalThis !== 'undefined' && !(globalThis as any).self) {
+          (globalThis as any).self = globalThis;
+        }
+        const fs = require('fs');
+        const path = require('path');
+        const candidate = glbPathOrUrl || path.resolve(__dirname, '../../assets/PAIR_Lab.glb');
+        if (fs.existsSync(candidate)) {
+          const buf = fs.readFileSync(candidate);
+          const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+          return new Promise<THREE.Group>((resolve) => {
+            loader.parse(
+              arrayBuf,
+              '',
+              (gltf) => {
+                this.applyAuthoritativeModel(gltf.scene);
+                resolve(this.pairLabGroup);
+              },
+              (err) => {
+                console.warn('GLTFLoader parse warning:', err);
+                resolve(this.pairLabGroup);
+              }
+            );
+          });
+        }
+      } catch (e) {
+        console.warn('Node GLB loader error:', e);
+      }
+    }
+
+    // Web / React Native environment
+    const expoHost = getExpoHostAddress() || '10.155.49.132';
+    let targetUrl = glbPathOrUrl;
+    if (!targetUrl) {
+      const isWeb = typeof window !== 'undefined' && Boolean((window as any).location?.origin);
+      if (isWeb) {
+        targetUrl = '/assets/PAIR_Lab.glb';
+      } else {
+        targetUrl = `http://${expoHost}:8856/assets/PAIR_Lab.glb`;
+      }
+    }
+
+    return new Promise<THREE.Group>((resolve) => {
+      // In React Native / mobile, fetch array buffer first to handle network URLs reliably
+      if (typeof fetch === 'function' && targetUrl.startsWith('http')) {
+        fetch(targetUrl)
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.arrayBuffer();
+          })
+          .then((buf) => {
+            loader.parse(
+              buf,
+              '',
+              (gltf) => {
+                this.applyAuthoritativeModel(gltf.scene);
+                resolve(this.pairLabGroup);
+              },
+              (err) => {
+                console.warn('GLTFLoader parse warning:', err);
+                resolve(this.pairLabGroup);
+              }
+            );
+          })
+          .catch((fetchErr) => {
+            console.warn('Failed to fetch authoritative PAIR_Lab.glb from URL:', targetUrl, fetchErr);
+            resolve(this.pairLabGroup);
+          });
+      } else {
+        loader.load(
+          targetUrl,
+          (gltf) => {
+            this.applyAuthoritativeModel(gltf.scene);
+            resolve(this.pairLabGroup);
+          },
+          undefined,
+          (err) => {
+            console.warn('Failed to load authoritative PAIR_Lab.glb from URL:', targetUrl, err);
+            resolve(this.pairLabGroup);
+          }
+        );
+      }
+    });
+  }
+
+  /**
+   * Constructs the canonical PAIR Lab environment immediately in-memory with zero network latency.
+   * Utilizes pre-compiled authoritative geometry (PAIR_LAB_MESHES, PAIR_LAB_BODIES, PAIR_LAB_CUBES)
+   * and GPU DataTextures so the floor, walls, tables, chairs, and obstacles render instantly on mobile.
+   */
+  public buildImmediatePairLabEnvironment(): THREE.Group {
+    if (this.immediateEnvironmentModel) {
+      return this.immediateEnvironmentModel;
+    }
+
+    const container = new THREE.Group();
+    container.name = 'Authoritative_Pair_Lab_Immediate';
+
+    // 1. Authoritative Floor Plane
+    const floorGeo = new THREE.PlaneGeometry(18.10, 15.42);
+    floorGeo.rotateX(-Math.PI / 2);
+    const floorTex = getAuthoritativeDataTexture('floor');
+    if (floorTex) {
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(16, 14);
+      floorTex.needsUpdate = true;
+    }
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: floorTex || null,
+      color: floorTex ? new THREE.Color(1, 1, 1) : new THREE.Color(0x334155),
+      roughness: 0.82,
+      metalness: 0.05,
+    });
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.name = 'Floor';
+    floorMesh.receiveShadow = true;
+    floorMesh.position.set(0, 0, 0);
+    container.add(floorMesh);
+
+    // Subtle extended ground below horizon
+    const subGroundGeo = new THREE.PlaneGeometry(80, 80);
+    subGroundGeo.rotateX(-Math.PI / 2);
+    const subGroundMat = new THREE.MeshStandardMaterial({
+      color: 0x090d16,
+      roughness: 0.95,
+      metalness: 0.0,
+    });
+    const subGround = new THREE.Mesh(subGroundGeo, subGroundMat);
+    subGround.position.set(0, -0.02, 0);
+    container.add(subGround);
+
+    // 2. Architectural Boundary Walls & Structural Pillars
+    const wallHeight = 5.34;
+    const halfW = 9.05;
+    const halfL = 7.71;
+
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0xf1f5f9,
+      roughness: 0.88,
+      metalness: 0.02,
+    });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0xbfe0f7,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 0.10,
+      metalness: 0.10,
+    });
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.85,
+      metalness: 0.05,
+    });
+
+    // North Wall (Solid)
+    const northWall = new THREE.Mesh(new THREE.BoxGeometry(18.10, wallHeight, 0.20), wallMat);
+    northWall.name = 'Wall_North';
+    northWall.position.set(0, wallHeight / 2, -halfL);
+    northWall.receiveShadow = true;
+    container.add(northWall);
+
+    // East Wall (Solid)
+    const eastWall = new THREE.Mesh(new THREE.BoxGeometry(0.20, wallHeight, 15.42), wallMat);
+    eastWall.name = 'Wall_East';
+    eastWall.position.set(halfW, wallHeight / 2, 0);
+    eastWall.receiveShadow = true;
+    container.add(eastWall);
+
+    // South Wall (Glass Partition)
+    const southWall = new THREE.Mesh(new THREE.BoxGeometry(18.10, wallHeight, 0.06), glassMat);
+    southWall.name = 'Glass_Wall_South';
+    southWall.position.set(0, wallHeight / 2, halfL);
+    container.add(southWall);
+
+    // West Wall (Glass Partition)
+    const westWall = new THREE.Mesh(new THREE.BoxGeometry(0.06, wallHeight, 15.42), glassMat);
+    westWall.name = 'Glass_Wall_West';
+    westWall.position.set(-halfW, wallHeight / 2, 0);
+    container.add(westWall);
+
+    // Structural Pillars
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, wallHeight, 1.0), pillarMat);
+    p1.name = 'Pillar_Big';
+    p1.position.set(-8.8, wallHeight / 2, 7.2);
+    p1.castShadow = true;
+    p1.receiveShadow = true;
+    container.add(p1);
+
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, wallHeight, 1.0), pillarMat);
+    p2.name = 'Pillar_Mid';
+    p2.position.set(8.8, wallHeight / 2, 7.2);
+    p2.castShadow = true;
+    p2.receiveShadow = true;
+    container.add(p2);
+
+    const p3 = new THREE.Mesh(new THREE.BoxGeometry(0.3, wallHeight, 1.0), pillarMat);
+    p3.name = 'Pillar_Short';
+    p3.position.set(8.94, wallHeight / 2, 3.38);
+    p3.castShadow = true;
+    p3.receiveShadow = true;
+    container.add(p3);
+
+    // 3. Compile Geometries & Materials from PAIR_LAB_MESHES
+    const cachedGeometries = new Map<string, THREE.BufferGeometry>();
+    const cachedMaterials = new Map<string, THREE.MeshStandardMaterial>();
+
+    const matToTexKey: Record<string, string> = {
+      'tripo_mat_3ce66be0': 'chair',
+      'chair_mat': 'chair',
+      'tripo_mat_4cb0bd4b': 'gaming_chair',
+      'gaming_chair_mat': 'gaming_chair',
+      'Material.001': 'table',
+      'table_wood_mat': 'table',
+      'tripo_mat_83625889': 'table_adjustable',
+      'table_adj_mat': 'table_adjustable',
+      'tripo_mat_3a807052': 'almirah',
+      'almirah_mat': 'almirah',
+      'tripo_mat_0eb0c7ea': 'beanbag',
+      'beanbag_mat': 'beanbag',
+      'tripo_mat_d417ecab': 'screen',
+      'screen_mat': 'screen',
+      'tripo_mat_4648c5fa': 'whiteboard',
+      'whiteboard_mat': 'whiteboard',
+      'Carpet': 'floor',
+    };
+
+    for (const [meshName, spec] of Object.entries(PAIR_LAB_MESHES)) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(spec.verts, 3));
+      geom.setAttribute('normal', new THREE.Float32BufferAttribute(spec.norms, 3));
+      geom.setAttribute('uv', new THREE.Float32BufferAttribute(spec.uvs, 2));
+      geom.setIndex(spec.indices);
+      cachedGeometries.set(meshName, geom);
+
+      const texKey = matToTexKey[spec.mat] || spec.mat;
+      const tex = getAuthoritativeDataTexture(texKey);
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex || null,
+        color: tex ? new THREE.Color(1, 1, 1) : new THREE.Color(0x94a3b8),
+        roughness: 0.55,
+        metalness: 0.05,
+      });
+      cachedMaterials.set(meshName, mat);
+    }
+
+    // 4. Instantiate Furniture Bodies
+    for (const body of PAIR_LAB_BODIES) {
+      const geom = cachedGeometries.get(body.mesh);
+      const mat = cachedMaterials.get(body.mesh);
+      if (!geom || !mat) continue;
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = body.name;
+      mesh.position.set(body.pos[0], body.pos[1], body.pos[2]);
+      mesh.rotation.y = body.rotY;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      container.add(mesh);
+    }
+
+    // 5. Instantiate Obstacle Cubes
+    const cubeMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      roughness: 0.45,
+      metalness: 0.15,
+    });
+    for (const cube of PAIR_LAB_CUBES) {
+      const cubeGeo = new THREE.BoxGeometry(cube.size[0], cube.size[1], cube.size[2]);
+      const mesh = new THREE.Mesh(cubeGeo, cubeMat);
+      mesh.name = cube.name;
+      mesh.position.set(cube.pos[0], cube.pos[1], cube.pos[2]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      container.add(mesh);
+    }
+
+    this.immediateEnvironmentModel = container;
+    return container;
+  }
+
+  private applyAuthoritativeModel(scene: THREE.Group): void {
+    // If immediate model was attached, remove it cleanly before adding GLB scene
+    if (this.immediateEnvironmentModel && this.pairLabGroup.children.includes(this.immediateEnvironmentModel)) {
+      this.pairLabGroup.remove(this.immediateEnvironmentModel);
+    }
+
+    // Clear any previous temporary elements
+    while (this.pairLabGroup.children.length > 0) {
+      const child = this.pairLabGroup.children[0];
+      this.pairLabGroup.remove(child);
+      if ((child as any).geometry) (child as any).geometry.dispose();
+      if ((child as any).material) {
+        if (Array.isArray((child as any).material)) (child as any).material.forEach((m: any) => m.dispose());
+        else (child as any).material.dispose();
+      }
+    }
+
+    // 1. Remove unwanted artifacts (e.g. Cube.001 floating black block)
+    const toRemove: THREE.Object3D[] = [];
+    scene.traverse((child) => {
+      if (
+        child.name === 'Cube.001' ||
+        (child.name.startsWith('Cube') && child.position.y > 1.5)
+      ) {
+        toRemove.push(child);
+      }
+    });
+    for (const obj of toRemove) {
+      obj.visible = false;
+      if (obj.parent) {
+        obj.parent.remove(obj);
+      }
+    }
+
+    // 2. Bind authoritative DataTextures natively onto WebGL materials
+    bindAuthoritativeMaterials(scene);
+
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    this.authoritativeLabModel = scene;
+    this.pairLabGroup.add(scene);
+    this.authoritativeGlbLoaded = true;
+  }
+
+  public buildPairLabEnvironment(): void {
+    const group = this.pairLabGroup;
+    group.visible = true;
+    if (!this.sceneManager.worldGroup.children.includes(this.pairLabGroup)) {
+      this.sceneManager.worldGroup.add(this.pairLabGroup);
+    }
+
+    // 1. If authoritative GLB has already been parsed and loaded, ensure it is attached
+    if (this.authoritativeLabModel) {
+      if (!this.pairLabGroup.children.includes(this.authoritativeLabModel)) {
+        this.pairLabGroup.add(this.authoritativeLabModel);
+      }
+      return;
+    }
+
+    // 2. SYNCHRONOUS IMMEDIATE DISPLAY:
+    // Mount the in-memory canonical PAIR Lab model immediately so the phone renders
+    // the floor, walls, tables, chairs, and obstacles instantly with ZERO black void.
+    const immediate = this.buildImmediatePairLabEnvironment();
+    if (!this.pairLabGroup.children.includes(immediate)) {
+      this.pairLabGroup.add(immediate);
+    }
+
+    // 3. Asynchronously attempt GLB enrichment in background
+    this.loadAuthoritativePairLabEnvironment();
   }
 
   /**
@@ -716,69 +1196,35 @@ export class BenchmarkScene {
    */
   private buildAsimovArticulated(): void {
     this.sceneManager.setLighting(true);
-    this.sceneManager.objectsGroup.add(this.robotModel.rootGroup);
+    this.robotModel.setEnvironmentScale(1.0);
+    this.robotModel.resetToNeutralPose();
+    this.robotModel.applyBasePose([0, 0, 0.630], [0, 0, 0, 1]);
+    if (!this.sceneManager.robotGroup.children.includes(this.robotModel.rootGroup)) {
+      this.sceneManager.robotGroup.add(this.robotModel.rootGroup);
+    }
   }
 
   /**
-   * ASIMOV 1 ENVIRONMENT — Canonical robot in target arena with obstacles and boundary walls
+   * ASIMOV 1 ENVIRONMENT — Canonical robot in PAIR Lab (default) or loaded arena
    */
   private buildAsimovEnvironment(): void {
-    const group = this.sceneManager.objectsGroup;
     this.sceneManager.setLighting(true);
 
-    // 1. Mount Asimov 1 Robot
-    group.add(this.robotModel.rootGroup);
-
-    // 2. Add Perimeter Arena Columns & Boundary Walls (Optimized ~5.2k triangles)
-    const pillarMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      roughness: 0.35,
-      metalness: 0.8,
-    });
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      roughness: 0.7,
-      metalness: 0.3,
-    });
-    const obstacleMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.5,
-      metalness: 0.5,
-    });
-
-    const pillarGeo = new THREE.CylinderGeometry(0.2, 0.2, 3.0, 16);
-    const radius = 7.5;
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-      pillar.position.set(Math.cos(angle) * radius, 1.5, Math.sin(angle) * radius);
-      pillar.castShadow = true;
-      pillar.receiveShadow = true;
-      group.add(pillar);
+    // 1. Maintain canonical Asimov 1 official dimensions (1.20m, 35kg, pelvis 0.630m)
+    this.robotModel.setEnvironmentScale(1.0);
+    this.robotModel.resetToNeutralPose();
+    this.robotModel.applyBasePose([0, 0, 0.630], [0, 0, 0, 1]);
+    if (!this.sceneManager.robotGroup.children.includes(this.robotModel.rootGroup)) {
+      this.sceneManager.robotGroup.add(this.robotModel.rootGroup);
     }
 
-    const wallGeo = new THREE.BoxGeometry(3.6, 1.8, 0.15);
-    for (let i = 0; i < 12; i++) {
-      const angle = ((i + 0.5) / 12) * Math.PI * 2;
-      const wall = new THREE.Mesh(wallGeo, wallMat);
-      wall.position.set(Math.cos(angle) * radius, 0.9, Math.sin(angle) * radius);
-      wall.rotation.y = -angle + Math.PI / 2;
-      wall.castShadow = true;
-      wall.receiveShadow = true;
-      group.add(wall);
+    // 2. Build and mount PAIR Lab scaled to match standard human architecture (tables 0.78m, chairs 0.90m)
+    this.pairLabGroup.scale.set(0.465116, 0.465116, 0.465116);
+    if (!this.sceneManager.worldGroup.children.includes(this.pairLabGroup)) {
+      this.sceneManager.worldGroup.add(this.pairLabGroup);
     }
-
-    // 20 Target arena calibration obstacles
-    const boxGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-    for (let i = 0; i < 20; i++) {
-      const obstacle = new THREE.Mesh(boxGeo, obstacleMat);
-      const r = 2.0 + (i % 4) * 1.1;
-      const a = i * 0.85;
-      obstacle.position.set(Math.cos(a) * r, 0.2, Math.sin(a) * r);
-      obstacle.castShadow = true;
-      obstacle.receiveShadow = true;
-      group.add(obstacle);
-    }
+    this.pairLabGroup.visible = true;
+    this.buildPairLabEnvironment();
   }
 
   /**
@@ -787,8 +1233,8 @@ export class BenchmarkScene {
   public update(timeSeconds: number, deltaSeconds: number): void {
     if (!this.animationEnabled) return;
 
-    // Update Asimov 1 continuous kinematic motion sequence
-    if (this.currentLevel === 'ASIMOV_ARTICULATED' || this.currentLevel === 'ASIMOV_ENVIRONMENT') {
+    // Update Asimov 1 continuous kinematic motion sequence ONLY in synthetic articulated demo mode
+    if (this.currentLevel === 'ASIMOV_ARTICULATED') {
       this.robotModel.updateContinuousArticulation(timeSeconds);
     }
 
@@ -814,5 +1260,129 @@ export class BenchmarkScene {
         joint.mesh.rotation.z = angle;
       }
     }
+  }
+
+  /**
+   * Real-time synchronization of MuJoCo arena environment (obstacles, friction, terrain)
+   */
+  public syncEnvironment(envData: {
+    name?: string;
+    preset?: string;
+    ground_friction?: number;
+    obstacles?: Array<{
+      name?: string;
+      type: string;
+      pos: [number, number, number];
+      size: number[];
+      rgba?: [number, number, number, number];
+    }>;
+  }): void {
+    if (!envData) return;
+    const presetName = envData.preset || envData.name || 'pair_lab';
+    const changed = this.currentEnvironmentPreset !== presetName;
+    this.currentEnvironmentPreset = presetName;
+
+    // 1. Manage PAIR Lab vs other environments
+    if (presetName === 'pair_lab') {
+      if (!this.sceneManager.worldGroup.children.includes(this.pairLabGroup)) {
+        this.sceneManager.worldGroup.add(this.pairLabGroup);
+      }
+      if (this.pairLabGroup.children.length === 0) {
+        this.buildPairLabEnvironment();
+      }
+      this.pairLabGroup.visible = true;
+
+      // Synchronize positions of any moved physical obstacles (e.g. cube_1 .. cube_5)
+      const obstacles = envData.obstacles || [];
+      for (const obs of obstacles) {
+        if (!obs.name) continue;
+        const target = this.pairLabGroup.getObjectByName(obs.name);
+        if (target && obs.pos) {
+          // MuJoCo (+X forward, +Y left, +Z up) -> Three.js (-Y, +Z, -X)
+          target.position.set(-obs.pos[1], obs.pos[2], -obs.pos[0]);
+        }
+      }
+      return;
+    }
+
+    // If preset is NOT pair_lab, hide pair_lab
+    this.pairLabGroup.visible = false;
+
+    // 2. Update Floor & Ground Appearance based on friction and preset
+    const friction = envData.ground_friction ?? 1.0;
+    if (this.floorMesh && this.floorMesh.material) {
+      const mat = this.floorMesh.material as THREE.MeshStandardMaterial;
+      if (friction < 0.4) {
+        mat.color.setHex(0x38bdf8);
+        mat.roughness = 0.1;
+        mat.metalness = 0.85;
+      } else if (presetName === 'playground') {
+        mat.color.setHex(0x1e1e2f);
+        mat.roughness = 0.6;
+        mat.metalness = 0.3;
+      } else {
+        mat.color.setHex(0x0f172a);
+        mat.roughness = 0.8;
+        mat.metalness = 0.2;
+      }
+      mat.needsUpdate = true;
+    }
+
+    // 3. Clear previous dynamic obstacles if preset changed
+    while (this.dynamicObstacleGroup.children.length > 0) {
+      const obj = this.dynamicObstacleGroup.children[0] as THREE.Mesh;
+      this.dynamicObstacleGroup.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+        else obj.material.dispose();
+      }
+    }
+
+    // 4. Spawn obstacles matching the MuJoCo environment (for obstacles/playground)
+    const obstacles = envData.obstacles || [];
+    for (const obs of obstacles) {
+      const pos = obs.pos || [0, 0, 0];
+      const size = obs.size || [0.1, 0.1, 0.1];
+      const rgba = obs.rgba || [0.88, 0.38, 0.15, 1.0];
+
+      // Coordinate mapping: MuJoCo (+X forward, +Y left, +Z up) -> Three.js (+Y up, -Z forward, -X left)
+      const threeX = -pos[1];
+      const threeY = pos[2];
+      const threeZ = -pos[0];
+
+      let geo: THREE.BufferGeometry;
+      if (obs.type === 'box') {
+        const hx = size[0] || 0.1;
+        const hy = size[1] || 0.1;
+        const hz = size[2] || 0.1;
+        geo = new THREE.BoxGeometry(hy * 2, hz * 2, hx * 2);
+      } else if (obs.type === 'sphere') {
+        const radius = size[0] || 0.1;
+        geo = new THREE.SphereGeometry(radius, 24, 24);
+      } else if (obs.type === 'cylinder') {
+        const radius = size[0] || 0.08;
+        const halfHeight = size[1] || 0.15;
+        geo = new THREE.CylinderGeometry(radius, radius, halfHeight * 2, 24);
+      } else {
+        geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+      }
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
+        roughness: 0.4,
+        metalness: 0.5,
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(threeX, threeY, threeZ);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.dynamicObstacleGroup.add(mesh);
+    }
+  }
+
+  public getCurrentEnvironmentPreset(): string {
+    return this.currentEnvironmentPreset;
   }
 }

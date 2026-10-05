@@ -43,7 +43,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOpenBenchmark,
 }) => {
   const detectedExpoHost = getExpoHostAddress();
-  const [host, setHost] = useState(initialHost || detectedExpoHost || '127.0.0.1');
+  const [host, setHost] = useState(
+    detectedExpoHost && (!initialHost || initialHost === '127.0.0.1')
+      ? detectedExpoHost
+      : initialHost || detectedExpoHost || '127.0.0.1'
+  );
   const [port, setPort] = useState(String(initialPort));
   const [isEditingCustom, setIsEditingCustom] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -246,14 +250,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               isConnecting ? styles.primaryButtonConnecting : null,
             ]}
             onPress={handleConnectPress}
-            disabled={isConnecting}
             activeOpacity={0.8}
           >
             <Text style={styles.primaryButtonText}>
               {isConnected
                 ? 'ENTER 3D TELEOP →'
                 : isConnecting
-                ? 'ESTABLISHING HANDSHAKE...'
+                ? 'CONNECTING... TAP TO RETRY'
                 : 'CONNECT TO ROBOT'}
             </Text>
           </TouchableOpacity>
@@ -302,7 +305,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(7, 10, 16, 0.90)',
+    backgroundColor: 'rgba(7, 10, 16, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,

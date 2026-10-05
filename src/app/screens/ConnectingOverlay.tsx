@@ -14,6 +14,7 @@ export interface ConnectingOverlayProps {
   host: string;
   port: number;
   onCancel: () => void;
+  onRetry?: () => void;
 }
 
 export const ConnectingOverlay: React.FC<ConnectingOverlayProps> = ({
@@ -21,6 +22,7 @@ export const ConnectingOverlay: React.FC<ConnectingOverlayProps> = ({
   host,
   port,
   onCancel,
+  onRetry,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -56,9 +58,16 @@ export const ConnectingOverlay: React.FC<ConnectingOverlayProps> = ({
 
         <Text style={styles.timer}>{`${elapsedSeconds}s elapsed`}</Text>
 
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel} activeOpacity={0.7}>
-          <Text style={styles.cancelButtonText}>CANCEL</Text>
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          {onRetry && (
+            <TouchableOpacity style={styles.retryButton} onPress={onRetry} activeOpacity={0.7}>
+              <Text style={styles.retryButtonText}>RETRY NOW</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={[styles.cancelButton, onRetry && styles.cancelButtonHalf]} onPress={onCancel} activeOpacity={0.7}>
+            <Text style={styles.cancelButtonText}>CANCEL</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -144,6 +153,28 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginBottom: 20,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  retryButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#0284c7',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    letterSpacing: 0.8,
+  },
   cancelButton: {
     width: '100%',
     paddingVertical: 10,
@@ -151,6 +182,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.4)',
     alignItems: 'center',
+  },
+  cancelButtonHalf: {
+    flex: 1,
+    width: undefined,
   },
   cancelButtonText: {
     color: '#ef4444',

@@ -12,6 +12,7 @@ import {
   serializeCommandPacket,
   AsimovRobotState,
   AsimovControlCommand,
+  CommandType,
   STATE_PACKET_SIZE,
   COMMAND_PACKET_SIZE,
   PROTOCOL_VERSION,
@@ -52,6 +53,7 @@ export interface StateTransportClientOptions {
   maxReconnectAttempts?: number;
   onStateReceived?: (state: AsimovRobotState) => void;
   onConnectionChange?: (state: ConnectionState) => void;
+  onEnvironmentReceived?: (envData: any) => void;
 }
 
 export class StateTransportClient {
@@ -70,6 +72,7 @@ export class StateTransportClient {
   // Listeners & Buffers
   private onStateReceived: ((state: AsimovRobotState) => void) | null = null;
   private onConnectionChange: ((state: ConnectionState) => void) | null = null;
+  private onEnvironmentReceived: ((envData: any) => void) | null = null;
 
   // Real Empirical Metrics (No fake values)
   private metrics: NetworkMetrics = {
@@ -103,10 +106,11 @@ export class StateTransportClient {
     this.host = options.host || '127.0.0.1';
     this.port = options.port || 8854;
     this.autoReconnect = options.autoReconnect ?? true;
-    this.reconnectIntervalMs = options.reconnectIntervalMs || 1500;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
+    this.reconnectIntervalMs = options.reconnectIntervalMs || 1000;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 500;
     this.onStateReceived = options.onStateReceived || null;
     this.onConnectionChange = options.onConnectionChange || null;
+    this.onEnvironmentReceived = options.onEnvironmentReceived || null;
 
     this.metrics.host = this.host;
     this.metrics.port = this.port;
@@ -128,12 +132,16 @@ export class StateTransportClient {
   public setCallbacks(callbacks: {
     onStateReceived?: (state: AsimovRobotState) => void;
     onConnectionChange?: (state: ConnectionState) => void;
+    onEnvironmentReceived?: (envData: any) => void;
   }): void {
     if (callbacks.onStateReceived !== undefined) {
       this.onStateReceived = callbacks.onStateReceived;
     }
     if (callbacks.onConnectionChange !== undefined) {
       this.onConnectionChange = callbacks.onConnectionChange;
+    }
+    if (callbacks.onEnvironmentReceived !== undefined) {
+      this.onEnvironmentReceived = callbacks.onEnvironmentReceived;
     }
   }
 
@@ -142,8 +150,17 @@ export class StateTransportClient {
    */
   public connect(): void {
     if (this.isDestroyed) return;
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      return;
+
+    // Clean up any stale or half-open socket before opening a fresh one
+    if (this.ws) {
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch (_) {}
+      this.ws = null;
     }
 
     this.setConnectionState(this.metrics.reconnectCount > 0 ? 'RECONNECTING' : 'CONNECTING');
@@ -206,65 +223,84 @@ export class StateTransportClient {
     } catch (_) {}
   }
 
+  private processBinaryPacket(buffer: ArrayBuffer, now: number): void {
+    if (buffer.byteLength !== STATE_PACKET_SIZE) {
+      this.metrics.malformedPacketsRejected++;
+      return;
+    }
+
+    let state: AsimovRobotState;
+    try {
+      state = parseStatePacket(buffer);
+    } catch (_) {
+      this.metrics.malformedPacketsRejected++;
+      return;
+    }
+
+    // Sequence validation & stale packet rejection
+    const seq = state.sequenceNumber;
+    if (this.expectedSequence > 0) {
+      // Detect stale / out-of-order packets
+      if (seq <= this.metrics.lastSequenceNumber && Math.abs(seq - this.metrics.lastSequenceNumber) < 100000) {
+        this.metrics.stalePacketsRejected++;
+        return;
+      }
+
+      // Detect sequence gaps (dropped packets)
+      const gap = seq - this.expectedSequence;
+      if (gap > 0) {
+        this.metrics.sequenceGaps += gap;
+        this.metrics.packetsDropped += gap;
+      }
+    }
+
+    this.metrics.lastSequenceNumber = seq;
+    this.expectedSequence = seq + 1;
+    this.metrics.lastPacketTimestamp = state.timestamp;
+    this.metrics.lastPacketArrivalWallTime = now;
+    this.metrics.lastPacketAgeMs = 0;
+    this.metrics.packetsReceived++;
+
+    // Track packet arrival for real packet rate calculation
+    this.packetTimestamps.push(now);
+    this.updatePacketRate(now);
+
+    // Notify consumer (e.g. StateBuffer) outside render loop
+    if (this.onStateReceived) {
+      this.onStateReceived(state);
+    }
+  }
+
   private handleMessage(event: WebSocketMessageEvent): void {
     const now = Date.now();
 
     // 1. Process Binary Packet (VAS1 State)
     if (event.data instanceof ArrayBuffer) {
-      const buffer = event.data;
-      if (buffer.byteLength !== STATE_PACKET_SIZE) {
-        this.metrics.malformedPacketsRejected++;
-        return;
-      }
-
-      let state: AsimovRobotState;
-      try {
-        state = parseStatePacket(buffer);
-      } catch (_) {
-        this.metrics.malformedPacketsRejected++;
-        return;
-      }
-
-      // Sequence validation & stale packet rejection
-      const seq = state.sequenceNumber;
-      if (this.expectedSequence > 0) {
-        // Detect stale / out-of-order packets
-        if (seq <= this.metrics.lastSequenceNumber && Math.abs(seq - this.metrics.lastSequenceNumber) < 100000) {
-          this.metrics.stalePacketsRejected++;
-          return;
-        }
-
-        // Detect sequence gaps (dropped packets)
-        const gap = seq - this.expectedSequence;
-        if (gap > 0) {
-          this.metrics.sequenceGaps += gap;
-          this.metrics.packetsDropped += gap;
-        }
-      }
-
-      this.metrics.lastSequenceNumber = seq;
-      this.expectedSequence = seq + 1;
-      this.metrics.lastPacketTimestamp = state.timestamp;
-      this.metrics.lastPacketArrivalWallTime = now;
-      this.metrics.lastPacketAgeMs = 0;
-      this.metrics.packetsReceived++;
-
-      // Track packet arrival for real packet rate calculation
-      this.packetTimestamps.push(now);
-      this.updatePacketRate(now);
-
-      // Notify consumer (e.g. StateBuffer) outside render loop
-      if (this.onStateReceived) {
-        this.onStateReceived(state);
-      }
+      this.processBinaryPacket(event.data, now);
       return;
     }
 
-    // 2. Process JSON Control Acknowledgements or Text Messages
+    if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          this.processBinaryPacket(reader.result, now);
+        }
+      };
+      reader.readAsArrayBuffer(event.data);
+      return;
+    }
+
+    // 2. Process JSON Control Acknowledgements, Environment Sync, or Text Messages
     if (typeof event.data === 'string') {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'ack' && msg.ack && msg.ack.timestamp) {
+        if (msg.type === 'environment' || msg.action === 'environment') {
+          const envData = msg.data || msg.params || msg;
+          if (this.onEnvironmentReceived) {
+            this.onEnvironmentReceived(envData);
+          }
+        } else if (msg.type === 'ack' && msg.ack && msg.ack.timestamp) {
           // Empirical RTT calculation
           const echoTime = msg.ack.timestamp * 1000;
           const rtt = now - echoTime;
@@ -276,15 +312,24 @@ export class StateTransportClient {
     }
   }
 
-  private handleError(_event: Event): void {
-    // WebSocket errors trigger onclose automatically in standard browser/RN environments
+  private handleError(_event: any): void {
+    if (this.ws) {
+      try { this.ws.close(); } catch (_) {}
+      this.ws = null;
+    }
+    if (this.autoReconnect && !this.isDestroyed) {
+      this.setConnectionState('RECONNECTING');
+      this.scheduleReconnect();
+    }
   }
 
   private handleClose(): void {
     this.ws = null;
-    this.setConnectionState('DISCONNECTED');
     if (this.autoReconnect && !this.isDestroyed) {
+      this.setConnectionState('RECONNECTING');
       this.scheduleReconnect();
+    } else {
+      this.setConnectionState('DISCONNECTED');
     }
   }
 
@@ -293,6 +338,13 @@ export class StateTransportClient {
 
     if (this.consecutiveFailures >= this.maxReconnectAttempts) {
       this.setConnectionState('FAILED');
+      // Rather than staying dead indefinitely, back off to 5s periodic check
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.autoReconnect && !this.isDestroyed) {
+          this.connect();
+        }
+      }, 5000);
       return;
     }
 
@@ -374,6 +426,28 @@ export class StateTransportClient {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /**
+   * Request authoritative environment configuration from VASIMOV over WebSocket
+   */
+  public queryEnvironment(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ action: 'get_environment' }));
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Request environment preset change on VASIMOV simulation over WebSocket
+   */
+  public setEnvironmentPreset(preset: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ action: 'environment', params: { preset } }));
+      } catch (_) {}
     }
   }
 
