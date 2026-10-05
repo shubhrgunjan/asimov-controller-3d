@@ -5,7 +5,7 @@ import { getExpoHostAddress } from '../utils/NetworkDiscovery';
 
 import { AsimovRobotModel, ValidationPoseName } from '../model/AsimovRobotModel';
 import { ASIMOV_1_TRIANGLES } from '../model/asimov_1_model_data';
-import { PAIR_LAB_BODIES, PAIR_LAB_CUBES, PAIR_LAB_MESHES } from '../model/pair_lab_model_data';
+import { PAIR_LAB_BODIES, PAIR_LAB_CUBES, PAIR_LAB_MESHES, decodeMeshSpec } from '../model/pair_lab_model_data';
 import { bindAuthoritativeMaterials, getAuthoritativeDataTexture } from '../model/pair_lab_textures';
 
 export type BenchmarkLevel =
@@ -308,6 +308,13 @@ export class BenchmarkScene {
   public loadLevel(level: BenchmarkLevel): void {
     this.currentLevel = level;
     this.sceneManager.clearObjects();
+    // Detach persistent environment groups before clearing temporary world objects to prevent destruction
+    if (this.sceneManager.worldGroup.children.includes(this.pairLabGroup)) {
+      this.sceneManager.worldGroup.remove(this.pairLabGroup);
+    }
+    if (this.sceneManager.worldGroup.children.includes(this.dynamicObstacleGroup)) {
+      this.sceneManager.worldGroup.remove(this.dynamicObstacleGroup);
+    }
     this.sceneManager.clearWorld();
     this.animatedObjects = [];
     this.articulatedJoints = [];
@@ -823,7 +830,7 @@ export class BenchmarkScene {
   private immediateEnvironmentModel: THREE.Group | null = null;
 
   public async loadAuthoritativePairLabEnvironment(glbPathOrUrl?: string): Promise<THREE.Group> {
-    if (this.authoritativeLabModel) {
+    if (this.authoritativeLabModel && this.authoritativeLabModel.children.length > 0) {
       if (!this.pairLabGroup.children.includes(this.authoritativeLabModel)) {
         this.pairLabGroup.add(this.authoritativeLabModel);
       }
@@ -840,9 +847,11 @@ export class BenchmarkScene {
         }
         const fs = require('fs');
         const path = require('path');
-        const candidate = glbPathOrUrl || path.resolve(__dirname, '../../assets/PAIR_Lab.glb');
-        if (fs.existsSync(candidate)) {
-          const buf = fs.readFileSync(candidate);
+        const candidate = glbPathOrUrl || path.resolve(__dirname, '../../assets/pair_lab.glb');
+        const fallbackCandidate = path.resolve(__dirname, '../../assets/PAIR_Lab.glb');
+        const targetFile = fs.existsSync(candidate) ? candidate : fs.existsSync(fallbackCandidate) ? fallbackCandidate : null;
+        if (targetFile) {
+          const buf = fs.readFileSync(targetFile);
           const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
           return new Promise<THREE.Group>((resolve) => {
             loader.parse(
@@ -853,33 +862,24 @@ export class BenchmarkScene {
                 resolve(this.pairLabGroup);
               },
               (err) => {
-                console.warn('GLTFLoader parse warning:', err);
+                console.info('GLTFLoader parse info:', err);
                 resolve(this.pairLabGroup);
               }
             );
           });
         }
       } catch (e) {
-        console.warn('Node GLB loader error:', e);
+        console.info('Node GLB loader info:', e);
       }
     }
 
-    // Web / React Native environment
-    const expoHost = getExpoHostAddress() || '10.155.49.132';
-    let targetUrl = glbPathOrUrl;
-    if (!targetUrl) {
-      const isWeb = typeof window !== 'undefined' && Boolean((window as any).location?.origin);
-      if (isWeb) {
-        targetUrl = '/assets/PAIR_Lab.glb';
-      } else {
-        targetUrl = `http://${expoHost}:8856/assets/PAIR_Lab.glb`;
-      }
-    }
-
-    return new Promise<THREE.Group>((resolve) => {
-      // In React Native / mobile, fetch array buffer first to handle network URLs reliably
-      if (typeof fetch === 'function' && targetUrl.startsWith('http')) {
-        fetch(targetUrl)
+    // In Web / React Native environment:
+    // Only attempt network fetch if an explicit custom URL or path was supplied.
+    // By default, the in-memory authoritative immediate environment is already mounted
+    // with full geometry and authoritative textures with zero network latency.
+    if (glbPathOrUrl && typeof fetch === 'function' && glbPathOrUrl.startsWith('http')) {
+      return new Promise<THREE.Group>((resolve) => {
+        fetch(glbPathOrUrl)
           .then((res) => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.arrayBuffer();
@@ -893,30 +893,19 @@ export class BenchmarkScene {
                 resolve(this.pairLabGroup);
               },
               (err) => {
-                console.warn('GLTFLoader parse warning:', err);
+                console.info('GLTFLoader parse info:', err);
                 resolve(this.pairLabGroup);
               }
             );
           })
           .catch((fetchErr) => {
-            console.warn('Failed to fetch authoritative PAIR_Lab.glb from URL:', targetUrl, fetchErr);
+            console.info('Custom GLB fetch skipped:', fetchErr?.message || fetchErr);
             resolve(this.pairLabGroup);
           });
-      } else {
-        loader.load(
-          targetUrl,
-          (gltf) => {
-            this.applyAuthoritativeModel(gltf.scene);
-            resolve(this.pairLabGroup);
-          },
-          undefined,
-          (err) => {
-            console.warn('Failed to load authoritative PAIR_Lab.glb from URL:', targetUrl, err);
-            resolve(this.pairLabGroup);
-          }
-        );
-      }
-    });
+      });
+    }
+
+    return Promise.resolve(this.pairLabGroup);
   }
 
   /**
@@ -925,21 +914,21 @@ export class BenchmarkScene {
    * and GPU DataTextures so the floor, walls, tables, chairs, and obstacles render instantly on mobile.
    */
   public buildImmediatePairLabEnvironment(): THREE.Group {
-    if (this.immediateEnvironmentModel) {
+    if (this.immediateEnvironmentModel && this.immediateEnvironmentModel.children.length > 0) {
       return this.immediateEnvironmentModel;
     }
 
     const container = new THREE.Group();
     container.name = 'Authoritative_Pair_Lab_Immediate';
 
-    // 1. Authoritative Floor Plane
-    const floorGeo = new THREE.PlaneGeometry(18.10, 15.42);
+    // 1. Authoritative Floor Plane (7.1720m width x 8.4186m length matching pair_lab.xml)
+    const floorGeo = new THREE.PlaneGeometry(7.1720, 8.4186);
     floorGeo.rotateX(-Math.PI / 2);
     const floorTex = getAuthoritativeDataTexture('floor');
     if (floorTex) {
       floorTex.wrapS = THREE.RepeatWrapping;
       floorTex.wrapT = THREE.RepeatWrapping;
-      floorTex.repeat.set(16, 14);
+      floorTex.repeat.set(15, 18);
       floorTex.needsUpdate = true;
     }
     const floorMat = new THREE.MeshStandardMaterial({
@@ -955,7 +944,7 @@ export class BenchmarkScene {
     container.add(floorMesh);
 
     // Subtle extended ground below horizon
-    const subGroundGeo = new THREE.PlaneGeometry(80, 80);
+    const subGroundGeo = new THREE.PlaneGeometry(50, 50);
     subGroundGeo.rotateX(-Math.PI / 2);
     const subGroundMat = new THREE.MeshStandardMaterial({
       color: 0x090d16,
@@ -966,10 +955,8 @@ export class BenchmarkScene {
     subGround.position.set(0, -0.02, 0);
     container.add(subGround);
 
-    // 2. Architectural Boundary Walls & Structural Pillars
-    const wallHeight = 5.34;
-    const halfW = 9.05;
-    const halfL = 7.71;
+    // 2. Architectural Boundary Walls & Structural Pillars (1:1 with pair_lab.xml)
+    const wallHeight = 2.4838;
 
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0xf1f5f9,
@@ -988,51 +975,67 @@ export class BenchmarkScene {
       roughness: 0.85,
       metalness: 0.05,
     });
+    const partitionMat = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      roughness: 0.85,
+      metalness: 0.05,
+    });
 
-    // North Wall (Solid)
-    const northWall = new THREE.Mesh(new THREE.BoxGeometry(18.10, wallHeight, 0.20), wallMat);
+    // North Wall (Solid) - MuJoCo pos [0, 3.5860, 1.2419], size [4.2093, 0.0372, 1.2419]
+    // Runs along Three.js Z at X = -3.5860
+    const northWall = new THREE.Mesh(new THREE.BoxGeometry(0.0744, wallHeight, 8.4186), wallMat);
     northWall.name = 'Wall_North';
-    northWall.position.set(0, wallHeight / 2, -halfL);
+    northWall.position.set(-3.5860, wallHeight / 2, 0);
     northWall.receiveShadow = true;
     container.add(northWall);
 
-    // East Wall (Solid)
-    const eastWall = new THREE.Mesh(new THREE.BoxGeometry(0.20, wallHeight, 15.42), wallMat);
+    // East Wall (Solid) - MuJoCo pos [4.2093, 0, 1.2419], size [0.0372, 3.5860, 1.2419]
+    // Runs along Three.js X at Z = -4.2093
+    const eastWall = new THREE.Mesh(new THREE.BoxGeometry(7.1720, wallHeight, 0.0744), wallMat);
     eastWall.name = 'Wall_East';
-    eastWall.position.set(halfW, wallHeight / 2, 0);
+    eastWall.position.set(0, wallHeight / 2, -4.2093);
     eastWall.receiveShadow = true;
     container.add(eastWall);
 
-    // South Wall (Glass Partition)
-    const southWall = new THREE.Mesh(new THREE.BoxGeometry(18.10, wallHeight, 0.06), glassMat);
+    // South Wall (Glass Partition) - MuJoCo pos [0, -3.5860, 1.2419], size [4.2093, 0.0186, 1.2419]
+    // Runs along Three.js Z at X = 3.5860
+    const southWall = new THREE.Mesh(new THREE.BoxGeometry(0.0372, wallHeight, 8.4186), glassMat);
     southWall.name = 'Glass_Wall_South';
-    southWall.position.set(0, wallHeight / 2, halfL);
+    southWall.position.set(3.5860, wallHeight / 2, 0);
     container.add(southWall);
 
-    // West Wall (Glass Partition)
-    const westWall = new THREE.Mesh(new THREE.BoxGeometry(0.06, wallHeight, 15.42), glassMat);
+    // West Wall (Glass Partition) - MuJoCo pos [-4.2093, 0, 1.2419], size [0.0186, 3.5860, 1.2419]
+    // Runs along Three.js X at Z = 4.2093
+    const westWall = new THREE.Mesh(new THREE.BoxGeometry(7.1720, wallHeight, 0.0372), glassMat);
     westWall.name = 'Glass_Wall_West';
-    westWall.position.set(-halfW, wallHeight / 2, 0);
+    westWall.position.set(0, wallHeight / 2, 4.2093);
     container.add(westWall);
 
+    // Side Room Partition - MuJoCo pos [2.7674, 2.9814, 1.2419], size [1.4419, 0.6047, 1.2419]
+    const sideRoom = new THREE.Mesh(new THREE.BoxGeometry(1.2094, wallHeight, 2.8838), partitionMat);
+    sideRoom.name = 'Side_Room';
+    sideRoom.position.set(-2.9814, wallHeight / 2, -2.7674);
+    sideRoom.receiveShadow = true;
+    container.add(sideRoom);
+
     // Structural Pillars
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, wallHeight, 1.0), pillarMat);
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.4652, wallHeight, 0.2326), pillarMat);
     p1.name = 'Pillar_Big';
-    p1.position.set(-8.8, wallHeight / 2, 7.2);
+    p1.position.set(3.3535, wallHeight / 2, 4.0930);
     p1.castShadow = true;
     p1.receiveShadow = true;
     container.add(p1);
 
-    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, wallHeight, 1.0), pillarMat);
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.4652, wallHeight, 0.2326), pillarMat);
     p2.name = 'Pillar_Mid';
-    p2.position.set(8.8, wallHeight / 2, 7.2);
+    p2.position.set(3.3535, wallHeight / 2, -4.0930);
     p2.castShadow = true;
     p2.receiveShadow = true;
     container.add(p2);
 
-    const p3 = new THREE.Mesh(new THREE.BoxGeometry(0.3, wallHeight, 1.0), pillarMat);
+    const p3 = new THREE.Mesh(new THREE.BoxGeometry(0.4652, wallHeight, 0.1024), pillarMat);
     p3.name = 'Pillar_Short';
-    p3.position.set(8.94, wallHeight / 2, 3.38);
+    p3.position.set(1.5743, wallHeight / 2, -4.1581);
     p3.castShadow = true;
     p3.receiveShadow = true;
     container.add(p3);
@@ -1062,11 +1065,7 @@ export class BenchmarkScene {
     };
 
     for (const [meshName, spec] of Object.entries(PAIR_LAB_MESHES)) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(spec.verts, 3));
-      geom.setAttribute('normal', new THREE.Float32BufferAttribute(spec.norms, 3));
-      geom.setAttribute('uv', new THREE.Float32BufferAttribute(spec.uvs, 2));
-      geom.setIndex(spec.indices);
+      const geom = decodeMeshSpec(spec);
       cachedGeometries.set(meshName, geom);
 
       const texKey = matToTexKey[spec.mat] || spec.mat;
@@ -1116,33 +1115,55 @@ export class BenchmarkScene {
   }
 
   private applyAuthoritativeModel(scene: THREE.Group): void {
-    // If immediate model was attached, remove it cleanly before adding GLB scene
-    if (this.immediateEnvironmentModel && this.pairLabGroup.children.includes(this.immediateEnvironmentModel)) {
-      this.pairLabGroup.remove(this.immediateEnvironmentModel);
-    }
-
-    // Clear any previous temporary elements
-    while (this.pairLabGroup.children.length > 0) {
-      const child = this.pairLabGroup.children[0];
-      this.pairLabGroup.remove(child);
-      if ((child as any).geometry) (child as any).geometry.dispose();
-      if ((child as any).material) {
-        if (Array.isArray((child as any).material)) (child as any).material.forEach((m: any) => m.dispose());
-        else (child as any).material.dispose();
+    // If scene does not include architectural boundaries (Floor, Walls), retain them from immediate model
+    const hasFloor = Boolean(scene.getObjectByName('Floor'));
+    if (!hasFloor && this.immediateEnvironmentModel) {
+      // Retain architectural boundaries (Floor, subGround, Walls, Pillars, Cubes)
+      // and only replace the furniture items
+      const furnitureNames = new Set([
+        'table_big', 'table_small_1', 'table_small_2', 'table_adjustable',
+        'gaming_chair', 'almirah', 'screen', 'beanbag_1', 'beanbag_2', 'whiteboard_1',
+        'chair_1', 'chair_2', 'chair_3', 'chair_4', 'chair_5', 'chair_6',
+        'chair_7', 'chair_8', 'chair_9', 'chair_10', 'chair_11',
+      ]);
+      const toRemove: THREE.Object3D[] = [];
+      this.immediateEnvironmentModel.traverse((child) => {
+        if (furnitureNames.has(child.name)) {
+          toRemove.push(child);
+        }
+      });
+      for (const obj of toRemove) {
+        if (obj.parent) obj.parent.remove(obj);
+      }
+      if (!this.pairLabGroup.children.includes(this.immediateEnvironmentModel)) {
+        this.pairLabGroup.add(this.immediateEnvironmentModel);
+      }
+    } else {
+      if (this.immediateEnvironmentModel && this.pairLabGroup.children.includes(this.immediateEnvironmentModel)) {
+        this.pairLabGroup.remove(this.immediateEnvironmentModel);
+      }
+      while (this.pairLabGroup.children.length > 0) {
+        const child = this.pairLabGroup.children[0];
+        this.pairLabGroup.remove(child);
+        if ((child as any).geometry) (child as any).geometry.dispose();
+        if ((child as any).material) {
+          if (Array.isArray((child as any).material)) (child as any).material.forEach((m: any) => m.dispose());
+          else (child as any).material.dispose();
+        }
       }
     }
 
     // 1. Remove unwanted artifacts (e.g. Cube.001 floating black block)
-    const toRemove: THREE.Object3D[] = [];
+    const toRemoveArtifacts: THREE.Object3D[] = [];
     scene.traverse((child) => {
       if (
         child.name === 'Cube.001' ||
         (child.name.startsWith('Cube') && child.position.y > 1.5)
       ) {
-        toRemove.push(child);
+        toRemoveArtifacts.push(child);
       }
     });
-    for (const obj of toRemove) {
+    for (const obj of toRemoveArtifacts) {
       obj.visible = false;
       if (obj.parent) {
         obj.parent.remove(obj);
@@ -1172,7 +1193,7 @@ export class BenchmarkScene {
     }
 
     // 1. If authoritative GLB has already been parsed and loaded, ensure it is attached
-    if (this.authoritativeLabModel) {
+    if (this.authoritativeLabModel && this.authoritativeLabModel.children.length > 0) {
       if (!this.pairLabGroup.children.includes(this.authoritativeLabModel)) {
         this.pairLabGroup.add(this.authoritativeLabModel);
       }
@@ -1187,7 +1208,7 @@ export class BenchmarkScene {
       this.pairLabGroup.add(immediate);
     }
 
-    // 3. Asynchronously attempt GLB enrichment in background
+    // 3. Asynchronously attempt GLB enrichment in background only if a custom URL is provided
     this.loadAuthoritativePairLabEnvironment();
   }
 
@@ -1218,8 +1239,8 @@ export class BenchmarkScene {
       this.sceneManager.robotGroup.add(this.robotModel.rootGroup);
     }
 
-    // 2. Build and mount PAIR Lab scaled to match standard human architecture (tables 0.78m, chairs 0.90m)
-    this.pairLabGroup.scale.set(0.465116, 0.465116, 0.465116);
+    // 2. Build and mount PAIR Lab at canonical 1:1 metric scale matching MuJoCo physics
+    this.pairLabGroup.scale.set(1.0, 1.0, 1.0);
     if (!this.sceneManager.worldGroup.children.includes(this.pairLabGroup)) {
       this.sceneManager.worldGroup.add(this.pairLabGroup);
     }

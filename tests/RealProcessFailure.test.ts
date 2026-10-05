@@ -20,8 +20,20 @@ import { StateTransportClient } from '../src/networking/StateTransportClient';
 import { TeleopController } from '../src/controls/TeleopController';
 import { CommandType } from '../src/protocol/AsimovStateProtocol';
 
-const PYTHON_BIN = '/home/shubhr/Shubhr/Projects/vasimov/.venv/bin/python3';
-const BACKEND_CWD = '/home/shubhr/Shubhr/Projects/vasimov';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const candidatePaths = [
+  path.resolve(__dirname, '../../vasimov'),
+  '/Users/admin/Projects/Asimov-Reverse-Engeneering/vasimov',
+  '/home/shubhr/Shubhr/Projects/vasimov',
+];
+const BACKEND_CWD = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
+const PYTHON_BIN = fs.existsSync(path.join(BACKEND_CWD, '.venv/bin/python3'))
+  ? path.join(BACKEND_CWD, '.venv/bin/python3')
+  : fs.existsSync(path.join(BACKEND_CWD, '.venv/bin/python'))
+  ? path.join(BACKEND_CWD, '.venv/bin/python')
+  : 'python3';
 
 describe('P5.2: Control Safety Under Real Process Termination & Reconnection', () => {
   let backendProc: ChildProcess | null = null;
